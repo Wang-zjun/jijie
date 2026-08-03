@@ -16,11 +16,17 @@
 
     // ---- 用户 ----
     getUsers(){
-      let raw = localStorage.getItem(KEY_USERS);
-      if(!raw){ raw = defaultUsers(); localStorage.setItem(KEY_USERS, raw); }
-      let arr;
-      try{ arr = JSON.parse(raw); }catch(e){ arr = null; }
-      if(!arr || !Array.isArray(arr)){ arr = JSON.parse(defaultUsers()); }
+      let arr = null;
+      const raw = localStorage.getItem(KEY_USERS);
+      if(raw){
+        try{ arr = JSON.parse(raw); }catch(e){ arr = null; }
+        if(!Array.isArray(arr)) arr = null;
+      }
+      if(!arr){
+        // 脏数据/无数据 -> 用默认用户（defaultUsers 返回数组），并写回
+        arr = defaultUsers();
+        localStorage.setItem(KEY_USERS, JSON.stringify(arr));
+      }
       return this.migrateUsers(arr);
     },
     migrateUsers(arr){
@@ -45,13 +51,19 @@
 
     // ---- 数据库（帖子等） ----
     getDB(){
-      let raw = localStorage.getItem(KEY_DB);
-      if(!raw){
+      const raw = localStorage.getItem(KEY_DB);
+      let db = null;
+      if(raw){
+        try{ db = JSON.parse(raw); }catch(e){ db = null; }
+        if(db && typeof db !== 'object') db = null;
+        if(db && Array.isArray(db)) db = null; // 脏数据
+      }
+      if(!db){
         const seeded = seedDB();
         localStorage.setItem(KEY_DB, JSON.stringify(seeded));
         return seeded;
       }
-      try{ return this.migrateDB(JSON.parse(raw)); }catch(e){ return seedDB(); }
+      return this.migrateDB(db);
     },
     migrateDB(db){
       let changed=false;
