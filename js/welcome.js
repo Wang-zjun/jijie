@@ -1,14 +1,4 @@
-/* 解集 · welcome.js — 三步引导逻辑 */
-const THEMES = [
-  {key:"neon",  name:"霓虹",  icon:"🌃", bg:"linear-gradient(135deg,#0f0c29,#302b63,#24243e)", desc:"黑底荧光·赛博"},
-  {key:"glass", name:"玻璃拟态", icon:"💠", bg:"linear-gradient(125deg,#667eea,#764ba2)", desc:"毛玻璃·通透"},
-  {key:"paper", name:"纸张",  icon:"📜", bg:"linear-gradient(135deg,#f7f3e8,#e6dbc0)", desc:"米黄仿纸·文青"},
-  {key:"ink",   name:"水墨古风", icon:"🕯️", bg:"linear-gradient(135deg,#f3ecdc,#dccfb0)", desc:"宣纸朱砂·古风"},
-];
-const THEME_CSS = {
-  neon:"css/theme-neon.css", glass:"css/theme-glass.css",
-  paper:"css/theme-paper.css", ink:"css/theme-ink.css"
-};
+/* 解集 · welcome.js — 登录/注册（不再含主题选择与分步引导） */
 const THEME_STAGE = {
   neon:"linear-gradient(135deg,#0f0c29,#302b63,#24243e)",
   glass:"linear-gradient(125deg,#667eea,#764ba2)",
@@ -16,65 +6,7 @@ const THEME_STAGE = {
   ink:"linear-gradient(135deg,#f3ecdc,#dccfb0)"
 };
 
-let current = 1, selTheme = Store.getTheme();
-
 function el(id){ return document.getElementById(id); }
-
-function buildThemes(){
-  const wrap = el("themes");
-  wrap.innerHTML = "";
-  THEMES.forEach(t=>{
-    const s = document.createElement("button");
-    s.className = "tcard" + (t.key===selTheme ? " sel" : "");
-    s.innerHTML = `<div class="swatch" style="background:${t.bg}">
-        <div class="ti">${t.icon}</div><div class="tn">${t.name}</div>
-      </div>
-      <div class="td">${t.desc}</div>
-      <div class="chk">✓</div>`;
-    s.onclick = ()=>{ selTheme = t.key; document.querySelectorAll(".tcard").forEach(c=>c.classList.remove("sel")); s.classList.add("sel"); livePreview(t.key); };
-    wrap.appendChild(s);
-  });
-}
-
-function livePreview(key){
-  // 切换预览条配色（模拟 mini 导航）
-  const t = THEMES.find(x=>x.key===key);
-  const pb = el("previewbar"); const top = el("pbtop"); const bar = el("pbbar");
-  pb.style.display = "block";
-  pb.style.background = t.bg;
-  const fg = (key==="paper"||key==="ink") ? "#3a332a" : "#fff";
-  top.innerHTML = `<span style="font-weight:800;font-size:15px;color:${fg}">解集</span><span style="font-size:12px;color:${fg}">SOLUTION SET</span>`;
-  const items = ["讨论板","题库","悬赏板","邮箱"];
-  bar.innerHTML = items.map(i=>`<div class="pb-item" style="color:${fg};background:${key==='glass'?'rgba(255,255,255,.35)':'rgba(255,255,255,.14)'}">${i}</div>`).join("");
-  // 背景也微调
-  el("stage").style.background = t.bg;
-}
-
-function go(n){
-  current = n;
-  document.querySelectorAll(".step").forEach(s=>{
-    s.classList.toggle("active", +s.dataset.step===n);
-    if(+s.dataset.step===2){ el("s2title").style.color = (n===2? pickFg() : ""); }
-  });
-  el("prog").style.width = (n/3*100)+"%";
-  updateDots();
-  if(n===2) buildThemes();
-}
-
-function pickFg(){ return (selTheme==="paper"||selTheme==="ink") ? "#3a332a" : "#fff"; }
-
-function updateDots(){
-  let d = el("dots"); d.innerHTML="";
-  for(let i=1;i<=3;i++){
-    const b=document.createElement("div");
-    b.className="dot"+(i<=current?" on":"");
-    d.appendChild(b);
-  }
-}
-
-function setStage(){
-  el("stage").style.background = THEME_STAGE[selTheme];
-}
 
 // ---- 账号 ----
 function setTab(mode){
@@ -117,7 +49,7 @@ el("regform").addEventListener("submit", async e=>{
     try{
       await Store.cloudRegister(mail, p);
       // 注册后存昵称
-      if(n){ const uname = mail; const users=Store.getUsers(); const u=users.find(x=>x.username===uname); if(u){ u.nick=n; Store.saveUsers(users); } }
+      if(n){ const users=Store.getUsers(); const u=users.find(x=>x.username===mail); if(u){ u.nick=n; Store.saveUsers(users); } }
       return finishCloud();
     }catch(e){ err("注册失败：" + e.message); }
   }
@@ -131,26 +63,18 @@ el("regform").addEventListener("submit", async e=>{
 function finishCloud(){
   // 普通用户登录：清掉可能残留的管理员切换标记
   try{ const cu=Store.currentUser(); if(cu && !cu.admin){ localStorage.removeItem('jijie_admin_session'); } }catch(e){}
-  Store.setTheme(selTheme); Store.setOnboarded();
+  Store.setOnboarded();
   location.href = "index.html";
 }
 function finishLocal(username){
-  Store.setAuth({username}); Store.setTheme(selTheme); Store.setOnboarded();
-  location.href = "index.html";
-}
-
-function skipAll(){
-  Store.setTheme(selTheme);
-  Store.setOnboarded();
+  Store.setAuth({username}); Store.setOnboarded();
   location.href = "index.html";
 }
 
 // 初始化
 (function init(){
-  // 预载当前主题样式
-  el("wtheme").href = THEME_CSS[selTheme];
-  setStage();
-  updateDots();
+  // 背景用当前保存的主题（或默认霓虹）
+  const theme = (window.Store && Store.getTheme()) || "neon";
+  el("stage").style.background = THEME_STAGE[theme] || THEME_STAGE.neon;
   setTab("login");
-  buildThemes();
 })();

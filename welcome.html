@@ -3,37 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>解集 · Solution Set Site — 迎新</title>
+<title>解集 · Solution Set Site — 登录</title>
 <link id="wtheme" rel="stylesheet" href="css/theme-neon.css">
 <link rel="stylesheet" href="css/welcome.css">
 </head>
 <body>
 <div id="stage"></div>
-<div id="prog"></div>
 
-<!-- 步骤1：欢迎 -->
+<!-- 直接登录/注册 -->
 <section class="step active" data-step="1">
   <div class="logo">解集<small>SOLUTION SET SITE</small></div>
   <p class="slogan">这里是数竞生的一方天地。<br>集合每一道难题，也集合每一个解出它的瞬间。</p>
-  <button class="btn primary" id="b1" onclick="go(2)">开始</button>
-</section>
-
-<!-- 步骤2：选主题 -->
-<section class="step" data-step="2">
-  <div style="font-size:15px;opacity:.75;letter-spacing:2px;margin-bottom:6px">先选一套你喜欢的界面风格</div>
-  <h1 id="s2title" style="font-size:30px;font-weight:800;letter-spacing:1px">选择主题</h1>
-  <div class="themes" id="themes"></div>
-  <div class="previewbar" id="previewbar" style="display:none">
-    <div class="pb-top" id="pbtop"></div>
-    <div class="pb-bar" id="pbbar"></div>
-  </div>
-  <div style="margin-top:8px"><button class="btn primary" onclick="go(3)">下一步</button></div>
-</section>
-
-<!-- 步骤3：账号 -->
-<section class="step" data-step="3">
-  <div style="font-size:15px;opacity:.75;letter-spacing:2px;margin-bottom:6px">最后一步</div>
-  <h1 style="font-size:30px;font-weight:800;margin-bottom:18px">加入解集</h1>
   <div class="authbox">
     <div class="tabs">
       <button class="tab" id="tab-login" onclick="setTab('login')">登录</button>
@@ -52,12 +32,9 @@
       <div class="field"><label>确认密码</label><input id="rp2" type="password" placeholder="再次输入密码"></div>
       <button class="btn primary" type="submit" style="width:100%;margin-top:6px">注册并进入</button>
     </form>
-    <p class="hint">账号数据已接入云端（Supabase），注册用邮箱，跨设备可同步登录。若云端未配置则自动降级为本地模式。</p>
+    <p class="hint">账号数据已接入云端（Supabase），注册用邮箱，跨设备可同步登录。换主题请在登录后到侧边栏「切换主题」。</p>
   </div>
 </section>
-
-<div id="dots"></div>
-<button id="skip" onclick="skipAll()">跳过引导 →</button>
 
 <script src="js/supabase.js"></script>
 <script src="js/store.js"></script>
