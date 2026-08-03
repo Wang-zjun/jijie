@@ -87,32 +87,53 @@ function setTab(mode){
 
 function err(msg){ el("autherr").textContent = msg; }
 
-el("loginform").addEventListener("submit", e=>{
+el("loginform").addEventListener("submit", async e=>{
   e.preventDefault(); err("");
   const u = el("lu").value.trim(), p = el("lp").value;
-  if(!u||!p) return err("请填写用户名和密码");
+  if(!u||!p) return err("请填写邮箱和密码");
+  // 云端登录（若 Supabase 可用）
+  if(window.Supabase){
+    try{
+      await Store.cloudLogin(u, p); // 成功后已 setAuth + pullUser
+      // 封禁检查
+      const me = Store.currentUser();
+      if(me && me.banned){ await Store.cloudLogout(); return err("该账号已被封禁，请联系管理员"); }
+      return finishCloud();
+    }catch(e){ err("登录失败：" + e.message); }
+  }
+  // 降级：本地用户名登录（仅当存了本地用户）
   const users = Store.getUsers();
   const user = users.find(x=>x.username===u && x.pass===p);
-  if(!user) return err("用户名或密码错误");
-  finish(user.username);
+  if(user){ if(user.banned){ return err("该账号已被封禁，请联系管理员"); } finishLocal(user.username); return; }
+  if(!user) err("邮箱或密码错误");
 });
-el("regform").addEventListener("submit", e=>{
+el("regform").addEventListener("submit", async e=>{
   e.preventDefault(); err("");
-  const u = el("ru").value.trim(), n = el("rn").value.trim(), p = el("rp").value, p2 = el("rp2").value;
-  if(!/^[A-Za-z0-9_]{3,16}$/.test(u)) return err("用户名需为 3-16 位字母/数字/下划线");
-  if(p.length < 4) return err("密码至少 4 位");
+  const mail = el("ru").value.trim(), n = el("rn").value.trim(), p = el("rp").value, p2 = el("rp2").value;
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) return err("请输入有效邮箱");
+  if(p.length < 6) return err("密码至少 6 位");
   if(p !== p2) return err("两次密码不一致");
+  if(window.Supabase){
+    try{
+      await Store.cloudRegister(mail, p);
+      // 注册后存昵称
+      if(n){ const uname = mail; const users=Store.getUsers(); const u=users.find(x=>x.username===uname); if(u){ u.nick=n; Store.saveUsers(users); } }
+      return finishCloud();
+    }catch(e){ err("注册失败：" + e.message); }
+  }
+  // 降级本地注册
   const users = Store.getUsers();
-  if(users.find(x=>x.username===u)) return err("该用户名已被注册");
-  users.push({username:u, nick:n||u, pass:p, admin:false, avatar:"", intro:"", points:20, solved:[], peekCount:{}, lucks:{}, registered:todayStr()});
-  Store.saveUsers(users);
-  finish(u);
+  if(users.find(x=>x.username===mail)) return err("该账号已注册");
+  users.push({username:mail, nick:n||mail, pass:p, admin:false, avatar:"", intro:"", points:20, solved:[], peekCount:{}, lucks:{}, registered:todayStr()});
+  Store.saveUsers(users); finishLocal(mail);
 });
 
-function finish(username){
-  Store.setAuth({username});
-  Store.setTheme(selTheme);
-  Store.setOnboarded();
+function finishCloud(){
+  Store.setTheme(selTheme); Store.setOnboarded();
+  location.href = "index.html";
+}
+function finishLocal(username){
+  Store.setAuth({username}); Store.setTheme(selTheme); Store.setOnboarded();
   location.href = "index.html";
 }
 

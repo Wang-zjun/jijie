@@ -33,21 +33,41 @@ let CUR = null; // 当前用户
 
 /* ================= 启动 ================= */
 function boot(){
-  // 未引导/未登录 → 欢迎页
   const theme = Store.getTheme();
   $("app-theme").href = THEME_CSS[theme];
   document.body.className = "theme-" + theme;
 
+  // 若 Supabase 有 token（已云端登录过）→ 恢复云会话并拉取数据
+  const cloudTok = window.Supabase ? window.Supabase.getToken() : null;
+  if(cloudTok){
+    // 无论引导与否，只要有云端会话就进主界面
+    Store.cloudPullUser().then(()=>{
+      CUR = Store.currentUser();
+      if(CUR){ enterApp(); return; }
+      afterBoot();
+    }).catch(()=>afterBoot());
+    return;
+  }
+  afterBoot();
+}
+function afterBoot(){
   if(!Store.getOnboarded()){
     location.href = "welcome.html"; return;
   }
   CUR = Store.currentUser();
   if(!CUR){
-    Store.setOnboarded(); // 已引导过但未登录 → 让去欢迎页登录
+    Store.setOnboarded();
     location.href = "welcome.html"; return;
   }
-  // 管理员显式入口
+  enterApp();
+}
+function enterApp(){
+  // 后台拉云端帖子等（不阻塞）
+  if(window.Supabase && Store.getTrust()){ Store.cloudPullAll().then(()=>{ try{route(currentPage);}catch(e){} }); }
   if(CUR.admin){ $("nav-admin").style.display = "flex"; }
+  // 若处于「管理员切换身份」状态，显示回到管理员按钮
+  const adm = sessionStorage.getItem('jijie_admin_back');
+  if(adm){ $("back-admin-wrap").style.display = "block"; }
   $("tb-user").textContent = (CUR.nick||CUR.username) + (CUR.admin?"": "");
   bindNav();
   buildThemeModal();
@@ -149,9 +169,20 @@ function renderHome(){
         <div class="muted">${h(luck.note)}</div>`:""}
     </div>
 
+    <h3 style="margin:26px 0 12px;font-family:var(--font-serif)">精华推荐</h3>
+    ${featuredBlock(db)}
+
     <h3 style="margin:26px 0 12px;font-family:var(--font-serif)">最新讨论</h3>
     ${boardHtml}
   `));
+}
+function featuredBlock(db){
+  const fp=(db.posts||[]).filter(p=>p.featured && !p.trashed);
+  const fpb=(db.problems||[]).filter(p=>p.featured);
+  let html='';
+  if(fp.length){ html+='<div class="card"><h3 style="font-size:15px">精华贴</h3>'+fp.slice(0,3).map(p=>'<div style="padding:4px 0">⭐ '+h(p.title)+' <span class="muted" style="font-size:12px">'+h(p.author)+'</span></div>').join('')+'</div>'; }
+  if(fpb.length){ html+='<div class="card"><h3 style="font-size:15px">精华题</h3>'+fpb.slice(0,3).map(p=>'<div style="padding:4px 0">⭐ '+h(p.title)+'</div>').join('')+'</div>'; }
+  return html || '<div class="muted" style="font-size:13px">暂无精华内容，管理员可在管理面板设精华</div>';
 }
 function signPointsHint(){
   const signs=Store.getDB().signs||[];
@@ -221,17 +252,34 @@ function postItem(p, db){
   return `<div class="card post">
     <div class="av">${av}</div>
     <div class="body">
-      <div class="pmeta">${h(user.nick||p.author)} · ${h(p.date)}${p.pin?'<span class="pin">置顶</span>':''}</div>
+      <div class="pmeta">${h(user.nick||p.author)} · ${h(p.date)}${p.pin?'<span class="pin">置顶</span>':''}${p.featured?'<span class="tag hot">精华</span>':''}${p.trashed?' <span class="muted">(回收站)</span>':''}</div>
       <div class="ptitle">${h(p.title)}</div>
       <div class="ptext">${h(p.body)}</div>
-      <div style="margin-top:8px;display:flex;gap:14px;font-size:12.5px;opacity:.7">
+      <div style="margin-top:8px;display:flex;gap:14px;font-size:12.5px;opacity:.7;flex-wrap:wrap">
         <span>评论 ${p.comments?p.comments.length:0}</span>
         <a href="#" onclick="viewPost(${p.id});return false;">查看/评论</a>
-        ${CUR.admin?`<a href="#" style="color:#d63a3a" onclick="delPost(${p.id});return false;">删除</a>
-        <a href="#" onclick="togglePin(${p.id});return false;">${p.pin?"取消置顶":"置顶"}</a>`:""}
+        ${CUR.admin?`
+        <a href="#" style="color:#d63a3a" onclick="delPost(${p.id});return false;">删除</a>
+        <a href="#" onclick="togglePin(${p.id});return false;">${p.pin?"取消置顶":"置顶"}</a>
+        <a href="#" onclick="toggleFeature(${p.id});return false;">${p.featured?"取消精华":"设精华"}</a>
+        <a href="#" onclick="editPost(${p.id});return false;">编辑</a>
+        <a href="#" onclick="trashPost(${p.id});return false;">${p.trashed?"恢复":"回收站"}</a>`:""}
       </div>
     </div>
   </div>`;
+}
+function toggleFeature(id){
+  const db=Store.getDB(); const p=db.posts.find(x=>x.id===id); if(!p) return; p.featured=!p.featured; Store.saveDB(db); rerender();
+}
+function editPost(id){
+  const db=Store.getDB(); const p=db.posts.find(x=>x.id===id); if(!p) return;
+  const t=prompt("标题：", p.title); if(t===null) return;
+  const b=prompt("正文：", p.body); if(b===null) return;
+  p.title=t; p.body=b; Store.saveDB(db); rerender();
+}
+function trashPost(id){
+  const db=Store.getDB(); const p=db.posts.find(x=>x.id===id); if(!p) return;
+  p.trashed=!p.trashed; Store.saveDB(db); rerender();
 }
 
 function viewPost(id){
@@ -241,8 +289,8 @@ function viewPost(id){
     ${postItem(p, db)}
     <div class="card">
       <h3>评论 (${p.comments.length})</h3>
-      ${p.comments.length ? p.comments.map(c=>`
-        <div style="padding:9px 0;border-bottom:1px solid var(--line)">${h(userByName(db,Store.getUsers(),c.author).nick||c.author)}：${h(c.body)} <span class="muted">· ${h(c.date)}</span></div>`).join("")
+      ${p.comments.length ? p.comments.map((c,ci)=>`
+        <div style="padding:9px 0;border-bottom:1px solid var(--line)">${h(userByName(db,Store.getUsers(),c.author).nick||c.author)}：${h(c.body)} <span class="muted">· ${h(c.date)}</span>${CUR.admin?` <a href="#" style="color:#d63a3a;font-size:12px" onclick="delComment(${p.id},${ci});return false;">删评论</a>`:''}</div>`).join("")
       : '<div class="muted">还没有评论</div>'}
       <div style="margin-top:12px;display:flex;gap:10px">
         <input id="cm-body" placeholder="写下评论…">
@@ -257,8 +305,15 @@ function addComment(id){
   p.comments.push({author:CUR.username, body:b, date:todayStr()});
   Store.saveDB(db); viewPost(id);
 }
+function delComment(pid, ci){
+  if(!CUR.admin) return;
+  const db=Store.getDB(); const p=db.posts.find(x=>x.id===pid); if(!p||!p.comments) return;
+  p.comments.splice(ci,1); Store.saveDB(db); viewPost(pid);
+}
 function delPost(id){
+  if(!CUR.admin){ return; }
   if(!confirm("确定删除该帖？")) return;
+  recordLog(CUR.username, 'delete_post', '删除帖子 #'+id);
   const db=Store.getDB(); db.posts=db.posts.filter(p=>p.id!==id); Store.saveDB(db); rerender();
 }
 function togglePin(id){
@@ -699,6 +754,35 @@ function uploadAvatar(input){
   input.value = "";
 }
 
+/* 管理员面板辅助 */
+function adminRank(users){
+  // 活跃排行：按解题+VIP翻译简化为解题数
+  const list=(users||[]).filter(u=>!u.admin).slice().sort((a,b)=>(b.solved||[]).length-(a.solved||[]).length);
+  if(!list.length) return '<span class="muted">暂无用户</span>';
+  return list.map((u,i)=>{ const nick=(u.nick||u.username||'?'); const n=(u.solved||[]).length; return '<div>'+(i+1)+'. '+esc(nick)+' — '+n+' 题</div>'; }).join('');
+}
+function adminLogs(db){
+  const logs=(db.logs||[]).slice().reverse().slice(0,50);
+  if(!logs.length) return '<span class="muted">暂无日志</span>';
+  return logs.map(l=>'<div>'+esc(l.date)+' · '+esc(l.user)+' · '+esc(l.action)+' · '+esc(l.detail)+'</div>').join('');
+}
+function esc(t){ return String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function sendMassMessage(){
+  if(!CUR.admin) return;
+  const t=document.getElementById('mass-title').value.trim();
+  const b=document.getElementById('mass-body').value.trim();
+  if(!t||!b) return alert('请填写主题和内容');
+  const db=Store.getDB();
+  if(!db.broadcasts) db.broadcasts=[];
+  db.broadcasts.push({title:t, body:b, from:CUR.username, date:todayStr()});
+  // 也写入通知，首页显示
+  if(!db.notices) db.notices=[];
+  db.notices.push({id:Date.now(), title:t, body:b, tag:'群发', date:todayStr()});
+  Store.saveDB(db);
+  recordLog(CUR.username,'broadcast', t);
+  alert('已群发 ✓');
+  renderAdmin();
+}
 /* ================= 管理员面板 ================= */
 function renderAdmin(){
   if(!CUR || !CUR.admin){ render(pageShell("无权限","", '<div class="card">此页面仅管理员可见。</div>')); return; }
@@ -706,16 +790,18 @@ function renderAdmin(){
 
   const userRows = users.map(u=>`
     <tr>
-      <td><span class="av" style="width:30px;height:30px;display:inline-flex">${avatarHtml(u,30)}</span> ${h(u.nick||u.username)} <span class="muted">@${h(u.username)}</span></td>
+      <td><span class="av" style="width:30px;height:30px;display:inline-flex">${avatarHtml(u,30)}</span> ${h(u.nick||u.username)} <span class="muted">@${h(u.username)}</span>${u.banned?' <span class="tag hot">封禁</span>':''}</td>
       <td>${u.admin?'<span class="tag hot">管理员</span>':'<span class="tag">用户</span>'}</td>
       <td class="muted">${h(u.registered||"—")}</td>
       <td>积分 <b>${u.admin?'∞':(u.points!==undefined?u.points:20)}</b></td>
       <td style="display:flex;gap:6px;flex-wrap:wrap">
-        ${!u.admin?`<button class="pbtn ghost" style="padding:4px 10px;font-size:12px" onclick="adminAddPoints('${u.username}')">加积分</button>`:''}
+        <button class="pbtn ghost" style="padding:4px 10px;font-size:12px" onclick="switchUser('${u.username}')">登录此账号</button>
         ${u.username!==CUR.username?`
+          ${!u.admin?`<button class="pbtn ghost" style="padding:4px 10px;font-size:12px" onclick="toggleBan('${u.username}')">${u.banned?"解封":"封禁"}</button>`:''}
+          ${!u.admin?`<button class="pbtn ghost" style="padding:4px 10px;font-size:12px" onclick="adminAddPoints('${u.username}')">加积分</button>`:''}
           <button class="pbtn ghost" style="padding:4px 10px;font-size:12px" onclick="toggleAdmin('${u.username}')">${u.admin?"取消管理":"设为管理"}</button>
-          <button class="pbtn ghost" style="padding:4px 10px;font-size:12px;border-color:#d63a3a;color:#d63a3a" onclick="delUser('${u.username}')">删除</button>`
-        :'<span class="muted">(当前)</span>'}
+          ${u.admin?`<span class="muted" style="font-size:11px">(protected)</span>`:`<button class="pbtn ghost" style="padding:4px 10px;font-size:12px;border-color:#d63a3a;color:#d63a3a" onclick="delUser('${u.username}')">删除</button>`}
+        `:'<span class="muted">(当前)</span>'}
       </td>
     </tr>`).join("");
 
@@ -728,9 +814,11 @@ function renderAdmin(){
       <td style="display:flex;gap:6px;flex-wrap:wrap">
         ${p.status==='pending'?`<button class="pbtn" style="padding:4px 10px;font-size:12px" onclick="approveProblem(${p.id})">通过</button>`:''}
         <button class="pbtn ghost" style="padding:4px 10px;font-size:12px" onclick="editProblem(${p.id})">编辑</button>
+        <button class="pbtn ghost" style="padding:4px 10px;font-size:12px" onclick="toggleProblemFeature(${p.id})">${p.featured?"取消精华":"设精华"}</button>
         <button class="pbtn ghost" style="padding:4px 10px;font-size:12px;border-color:#d63a3a;color:#d63a3a" onclick="delProblem(${p.id})">删除</button>
       </td>
     </tr>`).join("") : '<tr><td colspan="5" class="muted">暂无题目</td></tr>';
+function toggleProblemFeature(id){ const db=Store.getDB(); const p=db.problems.find(x=>x.id===id); if(!p)return; p.featured=!p.featured; Store.saveDB(db); renderAdmin(); }
 
   const postRows = db.posts.slice().reverse().map(p=>`
     <tr>
@@ -740,6 +828,8 @@ function renderAdmin(){
       <td>${p.comments?p.comments.length:0} 评</td>
       <td style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="pbtn ghost" style="padding:4px 10px;font-size:12px" onclick="togglePin(${p.id})">${p.pin?"取消置顶":"置顶"}</button>
+        <button class="pbtn ghost" style="padding:4px 10px;font-size:12px" onclick="toggleFeature(${p.id})">${p.featured?"取消精华":"设精华"}</button>
+        <button class="pbtn ghost" style="padding:4px 10px;font-size:12px" onclick="editPost(${p.id})">编辑</button>
         <button class="pbtn ghost" style="padding:4px 10px;font-size:12px;border-color:#d63a3a;color:#d63a3a" onclick="delPost(${p.id})">删除</button>
       </td>
     </tr>`).join("") || '<tr><td colspan="5" class="muted">暂无帖子</td></tr>';
@@ -748,7 +838,7 @@ function renderAdmin(){
     <tr>
       <td>${b.solved?'已解 ':''}${h(b.title)}</td>
       <td>${h(b.author)}</td>
-      <td><span class="tag">${h(b.reward)}</span></td>
+      <td><span class="tag">${h(b.rewardPts)} 分</span></td>
       <td>${b.solved?`<span class="muted">${h(b.solver||"")} 已解决</span>`:'<span class="tag new">进行中</span>'}</td>
       <td><button class="pbtn ghost" style="padding:4px 10px;font-size:12px;border-color:#d63a3a;color:#d63a3a" onclick="delBounty(${b.id})">删除</button></td>
     </tr>`).join("") : '<tr><td colspan="5" class="muted">暂无悬赏</td></tr>';
@@ -781,6 +871,12 @@ function renderAdmin(){
       <div class="stat"><div class="n">${db.posts.length}</div><div class="l">帖子</div></div>
       <div class="stat"><div class="n">${db.problems.length}</div><div class="l">题目</div></div>
       <div class="stat"><div class="n">${db.bounties.length}</div><div class="l">悬赏</div></div>
+      <div class="stat"><div class="n">${db.problems.reduce((a,p)=>a+(p.solves||0),0)}</div><div class="l">总解答</div></div>
+      <div class="stat"><div class="n">${(db.problems||[]).filter(p=>p.featured).length}</div><div class="l">精华题</div></div>
+    </div>
+    <h4 style="margin:18px 0 8px">活跃排行（按发帖+解答）</h4>
+    <div class="card" style="font-size:13.5px">
+      ${adminRank(users)}
     </div>
 
     <div class="card" style="margin-top:16px">
@@ -788,6 +884,20 @@ function renderAdmin(){
       <div class="field"><input id="nt-title" placeholder="通知标题"></div>
       <div class="field"><textarea id="nt-body" placeholder="通知内容…"></textarea></div>
       <button class="pbtn" onclick="publishNotice()">发布</button>
+    </div>
+
+    <div class="card">
+      <h3>群发站内消息</h3>
+      <div class="field"><input id="mass-title" placeholder="消息主题"></div>
+      <div class="field"><textarea id="mass-body" placeholder="消息内容…"></textarea></div>
+      <button class="pbtn" onclick="sendMassMessage()">群发</button>
+    </div>
+
+    <div class="card">
+      <h3>审计日志</h3>
+      <div style="max-height:200px;overflow-y:auto;font-size:12.5px;opacity:.8">
+        ${adminLogs(db)}
+      </div>
     </div>
 
     <h3 style="margin:26px 0 10px;font-family:var(--font-serif)">用户管理</h3>
@@ -857,6 +967,11 @@ function renderAdmin(){
       </table>
     </div>
 
+    <h3 style="margin:26px 0 10px;font-family:var(--font-serif)">回收站</h3>
+    <div class="card">
+      ${adminTrash(db)}
+    </div>
+
     <div class="card" style="border-color:#d63a3a33">
       <h3 style="color:#d63a3a">危险区</h3>
       <p class="muted">重置会清空所有本地数据（帖子/题目/资源等），回到初始状态。不可恢复。</p>
@@ -864,6 +979,15 @@ function renderAdmin(){
     </div>
   `;
   render(pageShell("管理面板","管理员专属 · 全面管理", adminHTML));
+}
+function adminTrash(db){
+  const tr=(db.posts||[]).filter(p=>p.trashed);
+  if(!tr.length) return '<span class="muted">回收站为空</span>';
+  return tr.map(p=>'<div style="padding:6px 0;border-bottom:1px dashed var(--line)">'+h(p.title)+' <span class="muted">('+h(p.author)+')</span> <a href="#" style="color:#2d9f5e" onclick="trashPost('+p.id+');return false;">恢复</a> <a href="#" style="color:#d63a3a" onclick="emptyTrashItem('+p.id+');return false;">彻底删除</a></div>').join('');
+}
+function emptyTrashItem(id){
+  if(!confirm("彻底删除该帖（不可恢复）？")) return;
+  const db=Store.getDB(); db.posts=db.posts.filter(p=>p.id!==id); Store.saveDB(db); renderAdmin();
 }
 function publishNotice(){
   const t=$("nt-title").value.trim(), b=$("nt-body").value.trim(); if(!t) return alert("标题必填");
@@ -905,14 +1029,68 @@ function adminAddPoints(username){
   if(u.points < 0) u.points = 0;
   Store.saveUsers(users); renderAdmin(); alert("已更新 "+username+" 积分："+u.points+(pts>=0?" (+"+pts+")":" ("+pts+")"));
 }
+// 管理员：以任意用户身份登录（切换身份）
+function switchUser(username){
+  if(!CUR || !CUR.admin) return;
+  const users=Store.getUsers(); const u=users.find(x=>x.username===username); if(!u) return alert("用户不存在");
+  if(u.banned){ return alert("该用户已被封禁，无法以他身份登录"); }
+  if(!confirm("以 \""+(u.nick||u.username)+"\" 的身份登录？可在侧边栏切回管理员。")) return;
+  // 记住当前管理员，便于切回
+  sessionStorage.setItem('jijie_admin_back', JSON.stringify({username:CUR.username}));
+  Store.setAuth({username:u.username});
+  CUR=Store.currentUser();
+  rerender();
+}
+// 管理员：封禁/解封用户（禁止登录）
+function toggleBan(username){
+  if(!CUR.admin) return;
+  const users=Store.getUsers(); const u=users.find(x=>x.username===username); if(!u||u.admin) return alert("不能封禁管理员");
+  if(!confirm((u.banned?"解封":"封禁")+" 用户 "+username+"？")) return;
+  u.banned=!u.banned;
+  Store.saveUsers(users);
+  // 云端同步封禁
+  if(window.Supabase){ Store.cloudPushUser(); }
+  renderAdmin();
+}
+// 管理员：切回管理员身份
+function backToAdmin(){
+  const saved=sessionStorage.getItem('jijie_admin_back');
+  if(saved){ try{ const j=JSON.parse(saved); Store.setAuth({username:j.username}); sessionStorage.removeItem('jijie_admin_back'); CUR=Store.currentUser(); rerender(); }catch(e){} }
+  else { alert("你不是通过切换进入的"); }
+}
 function toggleAdmin(username){
-  if(!confirm("确定更改该用户的管理员权限？")) return;
+  if(!CUR.admin) return;
   const users=Store.getUsers(); const u=users.find(x=>x.username===username); if(!u) return;
+  // 保护：admin 自身账号不可被降级（防失控）
+  if(u.admin && u.username==='wangzijun1969@outlook.com') return alert("主管理员账号受保护，不可降级");
+  if(!confirm("确定更改该用户的管理员权限？")) return;
   u.admin=!u.admin; Store.saveUsers(users); renderAdmin();
 }
 function delUser(username){
+  if(!CUR.admin) return;
+  const users=Store.getUsers(); const u=users.find(x=>x.username===username);
+  if(u && (u.admin || username==='wangzijun1969@outlook.com')) return alert("管理员账号受保护，不可删除");
   if(!confirm("确定删除用户 "+username+" ？将同时移除其登录能力。")) return;
-  let users=Store.getUsers(); users=users.filter(x=>x.username!==username); Store.saveUsers(users); renderAdmin();
+  users = users.filter(x=>x.username!==username); Store.saveUsers(users); renderAdmin();
+}
+// 审计日志 / 积分流水
+function recordLog(user, action, detail){
+  try{
+    const db=Store.getDB();
+    if(!db.logs) db.logs=[];
+    db.logs.push({user, action, detail, date:new Date().toLocaleString('zh-CN',{hour12:false})});
+    if(db.logs.length>300) db.logs=db.logs.slice(-300);
+    Store.saveDB(db);
+  }catch(e){}
+}
+function addPoints(username, delta, reason){
+  const users=Store.getUsers(); const u=users.find(x=>x.username===username);
+  if(!u||u.admin) return false;
+  u.points=(u.points===undefined?20:u.points)+delta;
+  if(u.points<0) u.points=0;
+  Store.saveUsers(users);
+  recordLog('system','points', username+' +'+delta+' ('+reason+')');
+  return true;
 }
 function resetData(){
   if(!confirm("确定清空所有本地数据？此操作不可恢复。")) return;
@@ -923,7 +1101,7 @@ function resetData(){
 
 /* ================= Auth ================= */
 const Auth = {
-  logout(){ if(!confirm("确定退出登录？"))return; Store.clearAuth(); location.href="welcome.html"; }
+  logout(){ if(!confirm("确定退出登录？"))return; if(window.Supabase){ Store.cloudLogout(); } else { Store.clearAuth(); } location.href="welcome.html"; }
 };
 
 /* ================= render helper ================= */
