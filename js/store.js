@@ -205,6 +205,8 @@
         await G('problems','problems', r=>({ id:r.id, title:r.title, tag:r.tag||'综合', diff:r.diff||3, body:r.body, solution:r.solution||'', status:r.status||'approved', author:r.author, solves:r.solves||0, solvers:r.solvers||{}, solutions:r.solutions||[] }));
         await G('bounties','bounties', r=>({ id:r.id, title:r.title, body:r.body, rewardPts:r.reward_pts||0, author:r.author, date:r.date||todayStr(), solved:!!r.solved, solver:r.solver||'', solution:r.solution||'' }));
         await G('notices','notices', r=>({ id:r.id, title:r.title, body:r.body, tag:r.tag||'公告', date:r.date||todayStr() }));
+        // 若管理员刚清空过通知（或普通用户无云端通知），不覆盖本地已清空的 notices
+        try{ const cleared=localStorage.getItem('jijie_cleared_notices'); if(cleared && (Date.now()-Number(cleared))<86400000){ db.notices=[]; } }catch(e){}
         localStorage.setItem(KEY_DB, JSON.stringify(db));
       }catch(e){}
     }

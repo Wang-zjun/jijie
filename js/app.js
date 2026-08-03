@@ -1054,9 +1054,27 @@ function clearAllNotices(){
   const n=(Store.getDB().notices||[]).length;
   if(!n) return alert("通知已是空的");
   if(!confirm("确定清空全部 "+n+" 条通知？此操作不可恢复。")) return;
+  // 清空本地
   const db=Store.getDB(); db.notices=[]; Store.saveDB(db);
+  // 同步清空云端 notices 表（防止刷新时云端旧数据倒灌回来）
+  if(window.Supabase){
+    storeCloudClear('notices');
+  }
+  // 记录清空标记：告诉 cloudPullAll 本轮不要用云端旧通知覆盖本地
+  try{ localStorage.setItem('jijie_cleared_notices', Date.now()); }catch(e){}
   recordLog(CUR.username,'clear_notices','清空全部 '+n+' 条通知');
-  renderAdmin(); alert("已清空全部通知 ✓");
+  renderAdmin(); alert("已清空全部通知（含云端）✓");
+}
+// 云端清空某表（管理员专用）
+async function storeCloudClear(table){
+  try{
+    const tok=window.Supabase.getToken();
+    if(!tok) return;
+    await fetch(window.Supabase.BASE+'/rest/v1/'+table+'?id=not.is.null', {
+      method:'DELETE',
+      headers:{ 'apikey':window.Supabase.ANON, 'Authorization':'Bearer '+tok }
+    });
+  }catch(e){}
 }
 function addProblem(){
   const t=$("prob-title").value.trim(), tag=$("prob-tag").value.trim(), d=$("prob-diff").value, b=$("prob-body").value.trim();
