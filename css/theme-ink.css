@@ -1,0 +1,39 @@
+/* 主题：水墨古风 INK·WASH — 宣纸 + 朱砂 */
+body.theme-ink{
+  --bg:#f3ecdc;
+  --bg-solid:#e7dcc2;
+  --fg:#3a332a;
+  --fg-soft:#5c5140;
+  --card-bg:rgba(255,252,244,.75);
+  --line:#dccfb0;
+  --input-bg:rgba(255,252,244,.7);
+  --accent:#b04a2e;
+  --accent2:#8a7248;
+  --nav-bg:linear-gradient(180deg,#efe5cc,#e7dcc2);
+  --nav-line:#d8c9a6;
+  --nav-hover:rgba(140,110,60,.08);
+  --nav-on:linear-gradient(90deg,rgba(180,60,40,.12),transparent);
+  --banner-bg:#7a2e18;
+  --row-hover:rgba(176,74,46,.04);
+}
+body.theme-ink{
+  background:var(--bg);color:var(--fg);
+  background-image:radial-gradient(rgba(120,100,70,.05) 1px,transparent 1px);background-size:22px 22px;
+  font-family:"KaiTi","STKaiti","Songti SC",serif;
+}
+body.theme-ink .brand,body.theme-ink .hero .logo,body.theme-ink #topbar .tb-brand{font-family:"KaiTi",serif;color:#2f2a1f;letter-spacing:7px;text-shadow:2px 2px 0 rgba(120,90,40,.12)}
+body.theme-ink #sidebar{background:var(--nav-bg);border-right:1px solid var(--nav-line)}
+body.theme-ink .snav a,body.theme-ink .sfoot a{font-family:"KaiTi",serif;font-size:15.5px;color:#5a4a32;border-bottom:1px solid transparent}
+body.theme-ink .snav a:hover,body.theme-ink .sfoot a:hover{background:var(--nav-hover);border-bottom-color:#a88a52}
+body.theme-ink .snav a.on,body.theme-ink .sfoot a.on{background:var(--nav-on);border-bottom-color:#b04a2e;color:#7a2e18;font-weight:700;border-left:3px solid #b04a2e}
+body.theme-ink .daily{background:rgba(255,252,244,.7);border:1px solid #dccfb0;box-shadow:0 1px 4px rgba(120,90,40,.08);font-family:"KaiTi",serif}
+body.theme-ink .bigbtn{background:transparent;color:#7a2e18;border:1px solid #b04a2e;font-family:"KaiTi",serif;letter-spacing:3px;border-radius:3px}
+body.theme-ink .bigbtn:hover{background:#b04a2e;color:#f3ecdc}
+body.theme-ink .luckbox{background:rgba(255,252,244,.7);border:1px solid #dccfb0}
+body.theme-ink .luckbox .sign{color:#7a2e18}
+body.theme-ink .modal{background:#f6efdd;border:1px solid #d8c9a6;border-radius:6px}
+body.theme-ink #topbar{background:rgba(243,236,220,.92)}
+body.theme-ink .card,body.theme-ink .stat{box-shadow:0 1px 4px rgba(120,90,40,.08);border-radius:4px;position:relative}
+body.theme-ink .card::before,body.theme-ink .stat::before{content:"◆";color:#b04a2e;position:absolute;left:6px;top:-8px;font-size:11px}
+body.theme-ink input,body.theme-ink textarea{border-color:#cbb990;background:rgba(255,252,244,.7);font-family:inherit}
+body.theme-ink .av{background:#e6dbc0;color:#7a2e18;border:1px solid #d8c9a6}

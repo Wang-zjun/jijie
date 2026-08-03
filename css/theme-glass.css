@@ -1,0 +1,34 @@
+/* 主题：玻璃拟态 GLASS — 毛玻璃半透明 */
+body.theme-glass{
+  --bg:linear-gradient(125deg,#667eea,#764ba2,#a56bd1 130%);
+  --bg-solid:#6d55b8;
+  --fg:#ffffff;
+  --fg-soft:rgba(255,255,255,.85);
+  --card-bg:rgba(255,255,255,.32);
+  --line:rgba(255,255,255,.55);
+  --input-bg:rgba(255,255,255,.5);
+  --accent:#ffffff;
+  --accent2:#ffd6a5;
+  --nav-bg:rgba(255,255,255,.28);
+  --nav-line:rgba(255,255,255,.5);
+  --nav-hover:rgba(255,255,255,.35);
+  --nav-on:rgba(255,255,255,.6);
+  --banner-bg:linear-gradient(90deg,#ff9a9e,#fad0c4);
+  --row-hover:rgba(255,255,255,.2);
+}
+body.theme-glass{background:var(--bg);color:var(--fg)}
+body.theme-glass .brand,.theme-glass #topbar .tb-brand{color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.28)}
+body.theme-glass #sidebar{background:var(--nav-bg);backdrop-filter:blur(18px) saturate(160%);border-right:1px solid var(--nav-line)}
+body.theme-glass .snav a:hover,.theme-glass .sfoot a:hover{background:var(--nav-hover)}
+body.theme-glass .snav a.on,.theme-glass .sfoot a.on{background:var(--nav-on);color:#241e3d;font-weight:700}
+body.theme-glass .snav a,.theme-glass .sfoot a{text-shadow:0 1px 3px rgba(0,0,0,.18)}
+body.theme-glass .daily{background:rgba(255,255,255,.28);border:1px solid rgba(255,255,255,.5);box-shadow:0 8px 28px rgba(0,0,0,.15)}
+body.theme-glass .bigbtn{background:#fff;color:#4c2a7a;box-shadow:0 10px 26px rgba(0,0,0,.28)}
+body.theme-glass .luckbox{background:rgba(255,255,255,.3);border:1px solid rgba(255,255,255,.55);backdrop-filter:blur(12px)}
+body.theme-glass .luckbox .sign{color:#3d2a5a}
+body.theme-glass .modal{background:rgba(255,255,255,.9);color:#2a2340}
+body.theme-glass #topbar{background:rgba(102,126,234,.7);backdrop-filter:blur(12px)}
+body.theme-glass input,body.theme-glass textarea{border-color:rgba(255,255,255,.6)}
+body.theme-glass .av{background:rgba(255,255,255,.5)}
+body.theme-glass .card,body.theme-glass .stat{backdrop-filter:blur(12px);box-shadow:0 8px 24px rgba(0,0,0,.12)}
+body.theme-glass .tag{background:rgba(255,255,255,.4)}

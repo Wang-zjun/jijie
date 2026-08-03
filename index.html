@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>解集 · Solution Set Site</title>
+<!-- KaTeX 数学公式 -->
+<link rel="stylesheet" href="js/vendor/katex/katex.min.css">
+<!-- 主题由 js 按 localStorage 注入 -->
+<link id="app-theme" rel="stylesheet" href="">
+<link rel="stylesheet" href="css/base.css">
+</head>
+<body class="theme-neon">
+
+<!-- 顶栏（手机端） -->
+<div id="topbar">
+  <button id="menu-btn" onclick="Sidebar.toggle()">☰</button>
+  <span class="tb-brand">解集</span>
+  <span id="tb-user" style="font-size:15px"></span>
+</div>
+
+<!-- 抽屉遮罩 -->
+<div id="drawer-mask" onclick="Sidebar.close()"></div>
+
+<div id="app">
+  <!-- 侧边导航 -->
+  <aside id="sidebar">
+  <div class="brand">解集<small>SOLUTION SET</small></div>
+  <nav class="snav">
+    <div class="grp">板块</div>
+    <a href="#" data-page="home" class="on"><span class="ico" data-i="home"></span>首页</a>
+    <a href="#" data-page="board"><span class="ico" data-i="board"></span>讨论板</a>
+    <a href="#" data-page="resources"><span class="ico" data-i="folder"></span>资源库</a>
+    <a href="#" data-page="articles"><span class="ico" data-i="doc"></span>文章专栏</a>
+    <a href="#" data-page="problems"><span class="ico" data-i="calc"></span>题库</a>
+    <a href="#" data-page="bounty"><span class="ico" data-i="award"></span>悬赏板</a>
+  </nav>
+  <div class="sfoot">
+    <div class="grp">find</div>
+    <a href="#" data-page="search"><span class="ico" data-i="search"></span>搜索 · 加好友</a>
+    <a href="#" data-page="mail"><span class="ico" data-i="mail"></span>邮件</a>
+    <a href="#" data-page="profile"><span class="ico" data-i="user"></span>我的主页</a>
+    <a href="#" data-page="admin" id="nav-admin" style="display:none"><span class="ico" data-i="shield"></span>管理面板</a>
+    <div style="height:8px"></div>
+    <a href="#" onclick="openThemeModal();return false;" class="theme-switch" id="nav-theme"><span class="ico" data-i="pet"></span>切换主题</a>
+    <a href="#" onclick="Auth.logout()" style="color:#d63a3a"><span class="ico" data-i="logout"></span>退出登录</a>
+  </div>
+</aside>
+
+<!-- 主内容 -->
+<main id="main"><div class="page" id="page"></div></main>
+</div><!-- /#app -->
+
+<!-- 主题切换弹层 -->
+<div class="modal-mask" id="theme-modal">
+  <div class="modal">
+    <h3 style="margin-bottom:14px">切换主题</h3>
+    <div id="theme-options" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px"></div>
+    <div style="margin-top:18px;text-align:right">
+      <button class="pbtn ghost" onclick="closeModal('theme-modal')">关闭</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/store.js"></script>
+<script src="data/seed.js"></script>
+<script src="js/vendor/katex/katex.min.js"></script>
+<script src="js/vendor/katex/contrib/auto-render.min.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

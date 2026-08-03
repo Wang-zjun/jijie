@@ -1,0 +1,31 @@
+/* 主题：霓虹 NEON — 黑底荧光渐变 */
+body.theme-neon{
+  --bg:linear-gradient(135deg,#0f0c29,#302b63,#24243e);
+  --bg-solid:#1a1740;
+  --fg:#eaeaf6;
+  --fg-soft:#b9b9dc;
+  --card-bg:rgba(255,255,255,.05);
+  --line:rgba(255,255,255,.12);
+  --input-bg:rgba(255,255,255,.06);
+  --accent:#ff8a00;
+  --accent2:#ff0084;
+  --nav-bg:rgba(15,12,41,.72);
+  --nav-line:rgba(255,255,255,.08);
+  --nav-hover:rgba(255,0,132,.15);
+  --nav-on:linear-gradient(90deg,rgba(255,0,132,.25),rgba(0,229,255,.15));
+  --banner-bg:linear-gradient(90deg,#ff0084,#ff8a00);
+  --row-hover:rgba(255,138,0,.05);
+}
+body.theme-neon{background:var(--bg);color:var(--fg)}
+body.theme-neon .brand,.theme-neon #topbar .tb-brand{background:linear-gradient(90deg,#ff0084,#ff8a00,#00e5ff);-webkit-background-clip:text;background-clip:text;color:transparent}
+body.theme-neon #sidebar{background:var(--nav-bg);backdrop-filter:blur(8px);border-right:1px solid var(--nav-line)}
+body.theme-neon .snav a:hover,.theme-neon .sfoot a:hover,.theme-neon .userchip:hover{background:var(--nav-hover);color:#ff8a00}
+body.theme-neon .snav a.on,.theme-neon .sfoot a.on{background:var(--nav-on);color:#fff}
+body.theme-neon .daily{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12)}
+body.theme-neon .bigbtn{background:linear-gradient(90deg,#ff0084,#ff8a00);color:#fff;box-shadow:0 0 22px rgba(255,0,132,.35)}
+body.theme-neon .luckbox{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12)}
+body.theme-neon .luckbox .sign{background:linear-gradient(90deg,#ff0084,#ff8a00,#00e5ff);-webkit-background-clip:text;background-clip:text;color:transparent}
+body.theme-neon .modal{background:#1e1b4b;border:1px solid rgba(255,255,255,.12)}
+body.theme-neon #topbar{background:rgba(20,17,54,.85)}
+body.theme-neon input,body.theme-neon textarea{border-color:rgba(255,255,255,.15)}
+body.theme-neon .av{background:linear-gradient(135deg,#ff0084,#ff8a00)}

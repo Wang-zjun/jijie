@@ -1,0 +1,16 @@
+# 解集 · Solution Set Site
+# 排除临时/日志/系统文件
+server.log
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 若将来接云端，排除密钥/环境变量
+.env
+.env.local
+
+# Python / Node 无关（当前纯静态，但预留）
+node_modules/
+__pycache__/
+*.pyc
