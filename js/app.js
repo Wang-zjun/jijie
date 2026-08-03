@@ -648,17 +648,33 @@ function renderSearch(){
   `;
   render(pageShell("搜索与好友","添加好友，一起讨论", html));
 }
-function doSearch(){
+async function doSearch(){
   const q=$("su").value.trim(); const box=$("search-res");
   if(!q){ box.innerHTML=""; return; }
-  const users=Store.getUsers();
-  const hits=users.filter(u=>u.username.toLowerCase().includes(q.toLowerCase()) && u.username!==CUR.username);
+  let hits=[];
+  // 云端登录：查所有注册用户
+  if(window.Supabase && Store.getTrust()){
+    try{
+      const rows=await window.Supabase.select('profiles','username,nick,admin,avatar',{});
+      if(Array.isArray(rows)){
+        hits=rows.filter(u=>u.username && String(u.username).toLowerCase().includes(q.toLowerCase()) && String(u.username)!==String(CUR.username))
+                 .map(u=>({username:u.username, nick:u.nick||u.username, admin:!!u.admin, avatar:u.avatar||''}));
+      }
+    }catch(e){ hits=[]; }
+  }
+  // 降级：本地用户
+  if(!hits.length){
+    try{
+      hits=Store.getUsers().filter(u=>u.username && String(u.username).toLowerCase().includes(q.toLowerCase()) && String(u.username)!==String(CUR.username));
+    }catch(e){}
+  }
   if(!hits.length){ box.innerHTML='<div class="muted">没有找到匹配的用户</div>'; return; }
   box.innerHTML = hits.map(u=>{
     const isFriend=(CUR.friends||[]).includes(u.username);
     return `<div class="userchip"><span class="av" style="width:34px;height:34px"><span style="display:flex">${avatarHtml(u,34)}</span></span>
       <span style="flex:1">${h(u.username)} <span class="muted">${h(u.nick||"")}</span></span>
-      <button class="pbtn ghost" style="padding:5px 14px;font-size:13px" onclick="addFriend('${u.username}',this)">${isFriend?"已是好友":"加好友"}</button></div>`;
+      ${u.admin?'<span class="tag hot">管理员</span>':''}
+      <button class="pbtn ghost" style="padding:5px 14px;font-size:13px" onclick="addFriend('${u.username}',this)">${isFriend?"<span style='color:#2d9f5e'>已是好友</span>":"＋加好友"}</button></div>`;
   }).join("");
 }
 function addFriend(name, btn){

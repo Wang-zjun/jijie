@@ -166,18 +166,31 @@
       }catch(e){}
     },
     async cloudPushDB(){
-      // 把本地 DB 各表推送到云端（按字段映射后 insert；失败静默）
+      // 推送到云端，用本地「已推送标记」去重（jijie_pushed），避免重复堆积
       try{
         const db=this.getDB();
         if(!db) return;
-        const ins=async(t, rows, map)=>{ if(!t||!rows||!rows.length) return; try{ await window.Supabase.insert(t, rows.map(map)); }catch(e){} };
-        const P = (p)=> p.pin!==undefined ? (p.pinned!==undefined?{...p,pinned:p.pin}:{...p,pinned:p.pin}) : p;
-        await ins('posts', db.posts||[], r=>({ title:r.title, body:r.body, author:r.author, date:(r.date||todayStr()), pinned:!!r.pin, comments:r.comments||[] }));
-        await ins('resources', db.resources||[], r=>({ name:r.name, type:r.type, link:r.link, sub:r.sub||'', author:r.author, date:(r.date||todayStr()) }));
-        await ins('articles', db.articles||[], r=>({ title:r.title, body:r.body, tags:r.tags||'', author:r.author, date:(r.date||todayStr()) }));
-        await ins('problems', db.problems||[], r=>({ title:r.title, tag:r.tag||'综合', diff:r.diff||3, body:r.body, solution:r.solution||'', status:r.status||'pending', author:r.author, solves:r.solves||0, solvers:r.solvers||{}, solutions:r.solutions||[] }));
-        await ins('bounties', db.bounties||[], r=>({ title:r.title, body:r.body, reward_pts:r.rewardPts||0, author:r.author, date:(r.date||todayStr()), solved:!!r.solved, solver:r.solver||'', solution:r.solution||'' }));
-        await ins('notices', db.notices||[], r=>({ title:r.title, body:r.body, tag:r.tag||'公告', date:(r.date||todayStr()) }));
+        const PUSH_KEY='jijie_pushed';
+        let pushed={}; try{ pushed=JSON.parse(localStorage.getItem(PUSH_KEY)||'{}'); }catch(e){ pushed={}; }
+        let changed=false;
+        const ins=async(table, rows, map, key)=>{
+          if(!rows||!rows.length) return;
+          const done=pushed[key]||[];
+          const todo=rows.filter(r=>!done.includes(String(r.id)));
+          if(!todo.length) return;
+          try{ await window.Supabase.insert(table, todo.map(map)); }catch(e){ return; }
+          // 记录已推送 id
+          const merged=(pushed[key]||[]).concat(todo.map(r=>String(r.id)));
+          pushed[key]=merged.slice(-500);
+          changed=true;
+        };
+        await ins('posts', db.posts||[], r=>({ title:r.title, body:r.body, author:r.author, date:(r.date||todayStr()), pinned:!!r.pin, comments:r.comments||[] }), 'posts');
+        await ins('resources', db.resources||[], r=>({ name:r.name, type:r.type, link:r.link, sub:r.sub||'', author:r.author, date:(r.date||todayStr()) }), 'resources');
+        await ins('articles', db.articles||[], r=>({ title:r.title, body:r.body, tags:r.tags||'', author:r.author, date:(r.date||todayStr()) }), 'articles');
+        await ins('problems', db.problems||[], r=>({ title:r.title, tag:r.tag||'综合', diff:r.diff||3, body:r.body, solution:r.solution||'', status:r.status||'pending', author:r.author, solves:r.solves||0, solvers:r.solvers||{}, solutions:r.solutions||[] }), 'problems');
+        await ins('bounties', db.bounties||[], r=>({ title:r.title, body:r.body, reward_pts:r.rewardPts||0, author:r.author, date:(r.date||todayStr()), solved:!!r.solved, solver:r.solver||'', solution:r.solution||'' }), 'bounties');
+        await ins('notices', db.notices||[], r=>({ title:r.title, body:r.body, tag:r.tag||'公告', date:(r.date||todayStr()) }), 'notices');
+        if(changed) localStorage.setItem(PUSH_KEY, JSON.stringify(pushed));
       }catch(e){}
     },
     // 从云端全量拉取到本地（登录后/启动时调用）
