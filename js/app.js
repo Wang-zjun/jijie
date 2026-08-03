@@ -994,6 +994,10 @@ function toggleProblemFeature(id){ const db=Store.getDB(); const p=db.problems.f
     </div>
 
     <h3 style="margin:26px 0 10px;font-family:var(--font-serif)">通知管理</h3>
+    <div class="card" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <span class="muted" style="font-size:13px">共 ${(db.notices||[]).length} 条通知</span>
+      <button class="pbtn ghost" style="padding:5px 14px;font-size:13px;border-color:#d63a3a;color:#d63a3a" onclick="clearAllNotices()">一键清空全部通知</button>
+    </div>
     <div class="card" style="overflow-x:auto">
       <table>
         <tr><th>标题</th><th>内容</th><th>操作</th></tr>
@@ -1045,6 +1049,15 @@ function publishNotice(){
   db.notices.push({id:Date.now(),title:t,body:b,tag:"公告",date:todayStr()}); Store.saveDB(db); renderAdmin();
 }
 function delNotice(id){ if(!confirm("删除该通知？"))return; const db=Store.getDB(); db.notices=db.notices.filter(n=>String(n.id)!==String(id)); Store.saveDB(db); renderAdmin(); }
+function clearAllNotices(){
+  if(!CUR.admin) return;
+  const n=(Store.getDB().notices||[]).length;
+  if(!n) return alert("通知已是空的");
+  if(!confirm("确定清空全部 "+n+" 条通知？此操作不可恢复。")) return;
+  const db=Store.getDB(); db.notices=[]; Store.saveDB(db);
+  recordLog(CUR.username,'clear_notices','清空全部 '+n+' 条通知');
+  renderAdmin(); alert("已清空全部通知 ✓");
+}
 function addProblem(){
   const t=$("prob-title").value.trim(), tag=$("prob-tag").value.trim(), d=$("prob-diff").value, b=$("prob-body").value.trim();
   const sol=$("prob-solution")?$("prob-solution").value.trim():"";
