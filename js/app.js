@@ -65,13 +65,20 @@ function enterApp(){
   // 后台拉云端帖子等（不阻塞）
   if(window.Supabase && Store.getTrust()){ Store.cloudPullAll().then(()=>{ try{route(currentPage);}catch(e){} }); }
   if(CUR.admin){ $("nav-admin").style.display = "flex"; }
-  // 若处于「管理员切换身份」状态，显示回到管理员按钮
-  const adm = sessionStorage.getItem('jijie_admin_back');
-  if(adm){ $("back-admin-wrap").style.display = "block"; }
+  // 非管理员进入：清掉任何残留的管理员切换标记（普通用户绝不该看到该按钮）
+  if(!CUR.admin){ try{ localStorage.removeItem('jijie_admin_session'); }catch(e){} }
+  updateBackAdminBtn();
   $("tb-user").textContent = (CUR.nick||CUR.username) + (CUR.admin?"": "");
   bindNav();
   buildThemeModal();
   route("home");
+}
+// 统一更新「回到管理员」按钮显示（switchUser/backToAdmin/enterApp 都调用）
+function updateBackAdminBtn(){
+  let adm=null; try{ adm=localStorage.getItem('jijie_admin_session'); }catch(e){}
+  let saved=null; if(adm){ try{ saved=JSON.parse(adm).username; }catch(e){} }
+  const show = adm && saved && saved!==CUR.username;
+  try{ $("back-admin-wrap").style.display = show ? "block" : "none"; }catch(e){}
 }
 
 /* ================= 导航 ================= */
@@ -1062,10 +1069,11 @@ function switchUser(username){
   const users=Store.getUsers(); const u=users.find(x=>x.username===username); if(!u) return alert("用户不存在");
   if(u.banned){ return alert("该用户已被封禁，无法以他身份登录"); }
   if(!confirm("以 \""+(u.nick||u.username)+"\" 的身份登录？可在侧边栏切回管理员。")) return;
-  // 记住当前管理员，便于切回
-  sessionStorage.setItem('jijie_admin_back', JSON.stringify({username:CUR.username}));
+  // 记住当前管理员，便于切回（localStorage 管理会话标记）
+  try{ localStorage.setItem('jijie_admin_session', JSON.stringify({username:CUR.username})); }catch(e){}
   Store.setAuth({username:u.username});
   CUR=Store.currentUser();
+  updateBackAdminBtn();
   rerender();
 }
 // 管理员：封禁/解封用户（禁止登录）
@@ -1096,8 +1104,8 @@ function muteUser(username){
   renderAdmin(); alert("已禁言 "+d+" 天");
 }
 function backToAdmin(){
-  const saved=sessionStorage.getItem('jijie_admin_back');
-  if(saved){ try{ const j=JSON.parse(saved); Store.setAuth({username:j.username}); sessionStorage.removeItem('jijie_admin_back'); CUR=Store.currentUser(); rerender(); }catch(e){} }
+  const saved=localStorage.getItem('jijie_admin_session');
+  if(saved){ try{ const j=JSON.parse(saved); Store.setAuth({username:j.username}); try{localStorage.removeItem('jijie_admin_session');}catch(e){} CUR=Store.currentUser(); updateBackAdminBtn(); rerender(); }catch(e){} }
   else { alert("你不是通过切换进入的"); }
 }
 function toggleAdmin(username){
@@ -1149,7 +1157,7 @@ function resetData(){
 
 /* ================= Auth ================= */
 const Auth = {
-  logout(){ if(!confirm("确定退出登录？"))return; if(window.Supabase){ Store.cloudLogout(); } else { Store.clearAuth(); } location.href="welcome.html"; }
+  logout(){ if(!confirm("确定退出登录？"))return; try{ localStorage.removeItem('jijie_admin_session'); }catch(e){} if(window.Supabase){ Store.cloudLogout(); } else { Store.clearAuth(); } location.href="welcome.html"; }
 };
 
 /* ================= render helper ================= */

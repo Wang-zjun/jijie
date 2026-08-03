@@ -129,6 +129,8 @@ el("regform").addEventListener("submit", async e=>{
 });
 
 function finishCloud(){
+  // 普通用户登录：清掉可能残留的管理员切换标记
+  try{ const cu=Store.currentUser(); if(cu && !cu.admin){ localStorage.removeItem('jijie_admin_session'); } }catch(e){}
   Store.setTheme(selTheme); Store.setOnboarded();
   location.href = "index.html";
 }
