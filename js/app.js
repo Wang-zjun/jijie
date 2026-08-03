@@ -1085,8 +1085,8 @@ function switchUser(username){
   const users=Store.getUsers(); const u=users.find(x=>x.username===username); if(!u) return alert("用户不存在");
   if(u.banned){ return alert("该用户已被封禁，无法以他身份登录"); }
   if(!confirm("以 \""+(u.nick||u.username)+"\" 的身份登录？可在侧边栏切回管理员。")) return;
-  // 记住当前管理员，便于切回（localStorage 管理会话标记）
-  try{ localStorage.setItem('jijie_admin_session', JSON.stringify({username:CUR.username})); }catch(e){}
+  // 记住当前管理员（存完整用户对象），便于切回（云端模式下本地可能无管理员缓存）
+  try{ localStorage.setItem('jijie_admin_session', JSON.stringify({user: CUR, username: CUR.username})); }catch(e){}
   Store.setAuth({username:u.username});
   CUR=Store.currentUser();
   updateBackAdminBtn();
@@ -1121,7 +1121,30 @@ function muteUser(username){
 }
 function backToAdmin(){
   const saved=localStorage.getItem('jijie_admin_session');
-  if(saved){ try{ const j=JSON.parse(saved); Store.setAuth({username:j.username}); try{localStorage.removeItem('jijie_admin_session');}catch(e){} CUR=Store.currentUser(); updateBackAdminBtn(); rerender(); }catch(e){} }
+  if(saved){
+    try{
+      const j=JSON.parse(saved);
+      // 还原完整管理员：优先用标记里的 user 对象，其次用 username 从缓存找
+      let adminUser = j.user || null;
+      if(!adminUser && j.username){
+        adminUser = Store.getUsers().find(x=>x.username===j.username) || null;
+      }
+      if(!adminUser){ return alert("无法还原管理员身份，请重新登录"); }
+      // 确保备份用户存在于本地 users
+      const users=Store.getUsers();
+      if(!users.find(x=>x.username===adminUser.username)){ users.push(adminUser); }
+      adminUser.admin = true; // 强制保持管理员权限
+      // 替换本地缓存中该用户
+      const idx=users.findIndex(x=>x.username===adminUser.username);
+      if(idx>=0){ users[idx]=adminUser; } else { users.push(adminUser); }
+      Store.saveUsers(users);
+      Store.setAuth({username:adminUser.username});
+      try{ localStorage.removeItem('jijie_admin_session'); }catch(e){}
+      CUR=Store.currentUser();
+      updateBackAdminBtn();
+      rerender();
+    }catch(e){}
+  }
   else { alert("你不是通过切换进入的"); }
 }
 function toggleAdmin(username){
