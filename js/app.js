@@ -239,6 +239,7 @@ function renderBoard(){
   render(pageShell("讨论板","交流想法、请教难题、分享心得", inner));
 }
 function newPost(){
+  if(isMuted(CUR)) return alert("你已被禁言到 "+CUR.muteUntil+"，暂时不能发帖");
   const t = $("np-title").value.trim(), b = $("np-body").value.trim();
   if(!t) return alert("请填写标题");
   const db = Store.getDB();
@@ -300,6 +301,7 @@ function viewPost(id){
   `));
 }
 function addComment(id){
+  if(isMuted(CUR)) return alert("你已被禁言，暂时不能评论");
   const b = $("cm-body").value.trim(); if(!b) return;
   const db = Store.getDB(); const p = db.posts.find(x=>x.id===id);
   p.comments.push({author:CUR.username, body:b, date:todayStr()});
@@ -798,6 +800,7 @@ function renderAdmin(){
         <button class="pbtn ghost" style="padding:4px 10px;font-size:12px" onclick="switchUser('${u.username}')">登录此账号</button>
         ${u.username!==CUR.username?`
           ${!u.admin?`<button class="pbtn ghost" style="padding:4px 10px;font-size:12px" onclick="toggleBan('${u.username}')">${u.banned?"解封":"封禁"}</button>`:''}
+          ${!u.admin?`<button class="pbtn ghost" style="padding:4px 10px;font-size:12px" onclick="muteUser('${u.username}')">${u.muteUntil&&new Date(u.muteUntil)>new Date()?"取消禁言":"禁言"}</button>`:''}
           ${!u.admin?`<button class="pbtn ghost" style="padding:4px 10px;font-size:12px" onclick="adminAddPoints('${u.username}')">加积分</button>`:''}
           <button class="pbtn ghost" style="padding:4px 10px;font-size:12px" onclick="toggleAdmin('${u.username}')">${u.admin?"取消管理":"设为管理"}</button>
           ${u.admin?`<span class="muted" style="font-size:11px">(protected)</span>`:`<button class="pbtn ghost" style="padding:4px 10px;font-size:12px;border-color:#d63a3a;color:#d63a3a" onclick="delUser('${u.username}')">删除</button>`}
@@ -820,9 +823,10 @@ function renderAdmin(){
     </tr>`).join("") : '<tr><td colspan="5" class="muted">暂无题目</td></tr>';
 function toggleProblemFeature(id){ const db=Store.getDB(); const p=db.problems.find(x=>x.id===id); if(!p)return; p.featured=!p.featured; Store.saveDB(db); renderAdmin(); }
 
-  const postRows = db.posts.slice().reverse().map(p=>`
+  const postRows = db.posts.slice().reverse().map((p,idx)=>`
     <tr>
-      <td>${p.pin?'置顶 ':''}${h(p.title)}</td>
+      <td><input type="checkbox" class="post-sel" value="${p.id}" data-idx="${idx}"></td>
+      <td>${p.pin?'置顶 ':''}${p.title}${p.featured?' <span class="tag hot">精华</span>':''}</td>
       <td>${h(p.author)}</td>
       <td class="muted">${h(p.date)}</td>
       <td>${p.comments?p.comments.length:0} 评</td>
@@ -928,9 +932,16 @@ function toggleProblemFeature(id){ const db=Store.getDB(); const p=db.problems.f
     </div>
 
     <h3 style="margin:26px 0 10px;font-family:var(--font-serif)">帖子管理</h3>
+    <div class="card">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="sel-all" onchange="toggleSelAll(this)"> 全选</label>
+        <button class="pbtn ghost" style="padding:5px 14px;font-size:13px;border-color:#d63a3a;color:#d63a3a" onclick="bulkDelPosts()">批量删除选中</button>
+        <span id="bulk-count" class="muted" style="font-size:12px"></span>
+      </div>
+    </div>
     <div class="card" style="overflow-x:auto">
       <table>
-        <tr><th>标题</th><th>作者</th><th>日期</th><th>评论</th><th>操作</th></tr>
+        <tr><th><input type="checkbox" onclick="toggleSelAll(this)"></th><th>标题</th><th>作者</th><th>日期</th><th>评论</th><th>操作</th></tr>
         ${postRows}
       </table>
     </div>
@@ -979,6 +990,22 @@ function toggleProblemFeature(id){ const db=Store.getDB(); const p=db.problems.f
     </div>
   `;
   render(pageShell("管理面板","管理员专属 · 全面管理", adminHTML));
+}
+function toggleSelAll(cb){
+  document.querySelectorAll('.post-sel').forEach(x=>x.checked=cb.checked);
+  updateBulkCount();
+}
+function updateBulkCount(){
+  const n=document.querySelectorAll('.post-sel:checked').length;
+  const el=document.getElementById('bulk-count'); if(el) el.textContent=n?('已选 '+n+' 帖'):'';
+}
+function bulkDelPosts(){
+  const ids=[...document.querySelectorAll('.post-sel:checked')].map(x=>Number(x.value));
+  if(!ids.length) return alert("请先勾选要删除的帖子");
+  if(!confirm("确定删除选中的 "+ids.length+" 个帖子？")) return;
+  const db=Store.getDB(); db.posts=db.posts.filter(p=>!ids.includes(p.id));
+  Store.saveDB(db); recordLog(CUR.username,'bulk_delete', '批量删除 '+ids.length+' 帖');
+  renderAdmin();
 }
 function adminTrash(db){
   const tr=(db.posts||[]).filter(p=>p.trashed);
@@ -1053,6 +1080,21 @@ function toggleBan(username){
   renderAdmin();
 }
 // 管理员：切回管理员身份
+function muteUser(username){
+  if(!CUR.admin) return;
+  const users=Store.getUsers(); const u=users.find(x=>x.username===username); if(!u||u.admin) return alert("不能禁言管理员");
+  if(u.muteUntil && new Date(u.muteUntil) > new Date()){
+    delete u.muteUntil; Store.saveUsers(users); renderAdmin(); alert("已取消禁言"); return;
+  }
+  const days=prompt("禁言天数（如 1=1天, 7=一周, 30=一月）：", "1");
+  if(days===null||days==="") return;
+  const d=parseInt(days,10);
+  if(isNaN(d)||d<=0) return alert("无效天数");
+  const until=new Date(); until.setDate(until.getDate()+d);
+  u.muteUntil=until.toISOString().slice(0,10);
+  Store.saveUsers(users); recordLog(CUR.username,'mute', username+' 禁言'+d+'天');
+  renderAdmin(); alert("已禁言 "+d+" 天");
+}
 function backToAdmin(){
   const saved=sessionStorage.getItem('jijie_admin_back');
   if(saved){ try{ const j=JSON.parse(saved); Store.setAuth({username:j.username}); sessionStorage.removeItem('jijie_admin_back'); CUR=Store.currentUser(); rerender(); }catch(e){} }
@@ -1072,6 +1114,12 @@ function delUser(username){
   if(u && (u.admin || username==='wangzijun1969@outlook.com')) return alert("管理员账号受保护，不可删除");
   if(!confirm("确定删除用户 "+username+" ？将同时移除其登录能力。")) return;
   users = users.filter(x=>x.username!==username); Store.saveUsers(users); renderAdmin();
+}
+// 禁言检查：CUR 被禁言且在有效期内则 true
+function isMuted(user){
+  if(!user || user.admin) return false;
+  if(!user.muteUntil) return false;
+  return new Date(user.muteUntil) > new Date();
 }
 // 审计日志 / 积分流水
 function recordLog(user, action, detail){
