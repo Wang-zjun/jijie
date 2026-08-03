@@ -2,6 +2,8 @@
 
 校内数竞生论坛（当前为本地演示版，后续接云端实现真互通）。
 
+**线上地址（GitHub Pages）**：https://wang-zjun.github.io/jijie/
+
 ## 运行
 ```bash
 cd jijie
