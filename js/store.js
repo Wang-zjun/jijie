@@ -60,6 +60,8 @@
       // 云：更新当前登录用户的 profile
       this.cloudUpdateUser();
     },
+    // 只写本地，不再触发云 push（供 cloudPushUser 内部回写合并后的 friends 等用，避免循环）
+    saveUsersLocalOnly(u){ if(!Array.isArray(u)||!u.length) return; const all=this.getUsers(); const un=u[0].username; const i=all.findIndex(x=>x.username===un); if(i>=0){ all[i]=u[0]; } else { all.push(u[0]); } this.migrateUsers(all); localStorage.setItem(KEY_USERS, JSON.stringify(all)); },
     getAuth(){ try{ return JSON.parse(localStorage.getItem(KEY_AUTH)); }catch(e){ return null; } },
     setAuth(a){ localStorage.setItem(KEY_AUTH, JSON.stringify(a)); },
     clearAuth(){ localStorage.removeItem(KEY_AUTH); localStorage.removeItem(KEY_TRUST); },
@@ -163,11 +165,16 @@
         const tok=window.Supabase.getToken(); if(!tok) return;
         const rows=await window.Supabase.getUser(); const uid=rows&&rows.id; if(!uid) return;
         const me=this.currentUser(); if(!me) return;
+        // 好友以「云端已有 + 本地」合并，不为空数组覆盖丢失 cloud 里的好友
+        let cloudFriends=[];
+        try{ const pf=await window.Supabase.select('profiles','friends',{id:uid}); if(Array.isArray(pf)&&pf[0]&&Array.isArray(pf[0].friends)) cloudFriends=pf[0].friends; }catch(e){}
+        const mergedFriends=Array.from(new Set((me.friends||[]).concat(cloudFriends)));
         await window.Supabase.update('profiles',{
           nick:me.nick||me.username, admin:!!me.admin, avatar:me.avatar||'',
           intro:me.intro||'', points:(me.points===Infinity?null:me.points),
-          solved:me.solved||[], peek_count:me.peekCount||{}, lucks:me.lucks||{}, friends:me.friends||[]
+          solved:me.solved||[], peek_count:me.peekCount||{}, lucks:me.lucks||{}, friends:mergedFriends
         },{id:uid});
+        if(me.friends===undefined || JSON.stringify(me.friends)!==JSON.stringify(mergedFriends)){ me.friends=mergedFriends; this.saveUsersLocalOnly([me]); }
       }catch(e){}
     },
     async cloudUpdateUser(){
@@ -175,6 +182,79 @@
         const me=this.currentUser(); if(!me) return;
         const tok=window.Supabase.getToken(); if(!tok) return;
         await this.cloudPushUser();
+      }catch(e){}
+    },
+
+    // ---- 好友（双向，云端为准） ----
+    // 按 username 查云端 profile（供加好友时回写对方、以及搜索）
+    async cloudFindUserByUsername(username){
+      try{
+        const tok=window.Supabase.getToken(); if(!tok) return null;
+        const rows=await window.Supabase.select('profiles','id,username,nick,admin,friends',{ username: username });
+        return (Array.isArray(rows)&&rows[0])?rows[0]:null;
+      }catch(e){ return null; }
+    },
+    // 更新对方 profile 的 friends（A加B时回写 B.friends += A）
+    async cloudAddFriendFor(username, friendName){
+      try{
+        const tok=window.Supabase.getToken(); if(!tok) return;
+        const p=await this.cloudFindUserByUsername(username);
+        if(!p||!p.id) return;
+        let fr=Array.isArray(p.friends)?p.friends:[];
+        if(fr.includes(friendName)) return;
+        fr.push(friendName);
+        await window.Supabase.update('profiles',{ friends: fr },{ id: p.id });
+      }catch(e){}
+    },
+    async cloudRemoveFriendFor(username, friendName){
+      try{
+        const tok=window.Supabase.getToken(); if(!tok) return;
+        const p=await this.cloudFindUserByUsername(username);
+        if(!p||!p.id) return;
+        let fr=Array.isArray(p.friends)?p.friends:[];
+        fr=fr.filter(x=>String(x)!==String(friendName));
+        await window.Supabase.update('profiles',{ friends: fr },{ id: p.id });
+      }catch(e){}
+    },
+
+    // ---- 邮件（洛谷式站内信，云端 mails 表） ----
+    // 表结构见 supabase_schema.sql：id, from, to, subject, body, date, read, del_by_from, del_by_to
+    async cloudSendMail(fromU, toU, subject, body){
+      try{
+        const tok=window.Supabase.getToken(); if(!tok) throw new Error('云端未登录');
+        const ins=await window.Supabase.insert('mails',[{ from:fromU, to:toU, subject:subject, body:body, date:todayStr(), read:false, del_by_from:false, del_by_to:false }]);
+        return ins;
+      }catch(e){ throw e; }
+    },
+    // 收件箱：to=我 且 (未被我删 or 在云端已同步到本地)
+    async cloudGetInbox(me){
+      try{
+        const tok=window.Supabase.getToken(); if(!tok) return [];
+        const rows=await window.Supabase.select('mails','*',{ to: me });
+        return Array.isArray(rows)?rows.filter(m=>!m.del_by_to):[];
+      }catch(e){ return []; }
+    },
+    async cloudGetOutbox(me){
+      try{
+        const tok=window.Supabase.getToken(); if(!tok) return [];
+        const rows=await window.Supabase.select('mails','*',{ from: me });
+        return Array.isArray(rows)?rows.filter(m=>!m.del_by_from):[];
+      }catch(e){ return []; }
+    },
+    // 删除：站在收件人角度删（del_by_to=true）；站在发件人角度删（del_by_from=true）
+    // side = 'to' | 'from'
+    async cloudDeleteMail(mailId, side){
+      try{
+        const tok=window.Supabase.getToken(); if(!tok) return;
+        const patch = side==='to' ? { del_by_to:true } : { del_by_from:true };
+        await window.Supabase.update('mails', patch, { id: mailId });
+      }catch(e){}
+    },
+    // 标记已读
+    async cloudMarkMailRead(mailId){
+      try{
+        const tok=window.Supabase.getToken(); if(!tok) return;
+        await window.Supabase.update('mails', { read:true }, { id: mailId });
       }catch(e){}
     },
     // 云端删除一行（本地删除了就把云端对应 cloudId 的记录也删掉）

@@ -647,7 +647,8 @@ function renderSearch(){
       <div id="friend-list">
         ${(CUR.friends||[]).length ? CUR.friends.map(f=>`
           <div class="userchip"><span class="av" style="width:34px;height:34px"><span style="display:flex">${avatarHtml(userByName(Store.getDB(),Store.getUsers(),f),34)}</span></span>
-          <span style="flex:1">${h(f)}</span></div>`).join("") : '<div class="muted">还没有好友</div>'}
+          <span style="flex:1">${h(f)}</span>
+          <a href="#" style="color:#d63a3a;font-size:12px" onclick="removeFriend('${f}');return false;">删除好友</a></div>`).join("") : '<div class="muted">还没有好友</div>'}
       </div>
     </div>
   `;
@@ -657,18 +658,18 @@ async function doSearch(){
   const q=$("su").value.trim(); const box=$("search-res");
   if(!q){ box.innerHTML=""; return; }
   let hits=[];
-  // 云端登录：查所有注册用户
-  if(window.Supabase && Store.getTrust()){
+  // 云端登录：查所有注册用户（profiles 表），已登录即可搜，不依赖本地缓存
+  if(window.Supabase && window.Supabase.getToken()){
     try{
       const rows=await window.Supabase.select('profiles','username,nick,admin,avatar',{});
       if(Array.isArray(rows)){
-        hits=rows.filter(u=>u.username && String(u.username).toLowerCase().includes(q.toLowerCase()) && String(u.username)!==String(CUR.username))
+        hits=rows.filter(u=>u && u.username && String(u.username).toLowerCase().includes(q.toLowerCase()) && String(u.username)!==String(CUR.username))
                  .map(u=>({username:u.username, nick:u.nick||u.username, admin:!!u.admin, avatar:u.avatar||''}));
       }
     }catch(e){ hits=[]; }
   }
-  // 降级：本地用户
-  if(!hits.length){
+  // 无云端会话时降级：本地用户
+  if(!hits.length && !(window.Supabase && window.Supabase.getToken())){
     try{
       hits=Store.getUsers().filter(u=>u.username && String(u.username).toLowerCase().includes(q.toLowerCase()) && String(u.username)!==String(CUR.username));
     }catch(e){}
@@ -683,17 +684,29 @@ async function doSearch(){
   }).join("");
 }
 function addFriend(name, btn){
+  if(!CUR || !CUR.username) return;
   const users=Store.getUsers(); const me=users.find(u=>u.username===CUR.username);
+  if(!me) return;
   if(!me.friends) me.friends=[];
   if(me.friends.includes(name)) return;
   me.friends.push(name); Store.saveUsers(users); CUR=Store.currentUser();
-  btn.textContent="已添加"; btn.disabled=true; renderSearch();
+  // 双向：回写对方 profile 的 friends（B 那边也能看到 A）
+  if(window.Supabase && window.Supabase.getToken()) Store.cloudAddFriendFor(name, CUR.username);
+  if(btn){ btn.textContent="已添加"; btn.disabled=true; }
+  renderSearch();
+}
+async function removeFriend(name){
+  if(!CUR || !CUR.username) return;
+  if(!confirm("确定删除好友 "+name+" ？")) return;
+  const users=Store.getUsers(); const me=users.find(u=>u.username===CUR.username);
+  if(!me||!me.friends) return;
+  me.friends=me.friends.filter(x=>String(x)!==String(name)); Store.saveUsers(users); CUR=Store.currentUser();
+  if(window.Supabase && window.Supabase.getToken()) Store.cloudRemoveFriendFor(name, CUR.username);
+  renderSearch();
 }
 
 function renderMail(){
   const db=Store.getDB();
-  const mail = db.mail || [];
-  const mine = mail.filter(m=>m.from===CUR.username || m.to===CUR.username);
   let html=`
     <div class="card">
       <h3>发送邮件</h3>
@@ -705,25 +718,76 @@ function renderMail(){
       <div class="field"><textarea id="mail-body" placeholder="内容…"></textarea></div>
       <button class="pbtn" onclick="sendMail()">发送</button>
     </div>
-    <h3 style="margin:20px 0 10px;font-family:var(--font-serif)">我的邮件</h3>
-    ${mine.length ? mine.slice().reverse().map(m=>`
-      <div class="card">
-        <div class="pmeta">${m.from===CUR.username?'→ 发送给 '+h(m.to):'← 来自 '+h(m.from)} · ${h(m.date)}</div>
-        <div class="ptitle">${h(m.subject)}</div>
-        <div class="ptext">${h(m.body)}</div>
-      </div>`).join("") : '<div class="muted">还没有邮件</div>'}
+    <h3 style="margin:20px 0 10px;font-family:var(--font-serif)">收件箱</h3>
+    <div id="mail-inbox"><div class="muted">加载中…</div></div>
+    <h3 style="margin:20px 0 10px;font-family:var(--font-serif)">已发送</h3>
+    <div id="mail-outbox"><div class="muted">加载中…</div></div>
   `;
   render(pageShell("邮件","给好友发消息", html));
+  loadMailbox();
 }
-function sendMail(){
+// 异步加载收件箱+发件箱（云端优先；无云端时降级到本地公共池 db.mail）
+async function loadMailbox(){
+  const me=CUR ? CUR.username : '';
+  const inboxEl=$("mail-inbox"), outboxEl=$("mail-outbox");
+  let inbox=[], outbox=[];
+  if(window.Supabase && window.Supabase.getToken()){
+    try{
+      inbox = await Store.cloudGetInbox(me);
+      outbox = await Store.cloudGetOutbox(me);
+    }catch(e){}
+  }
+  // 降级：本地公共池（未登录/云端不可用时）
+  if(!inbox.length && !outbox.length){
+    try{
+      const mail = Store.getDB().mail || [];
+      inbox = mail.filter(m=>String(m.to)===String(me));
+      outbox = mail.filter(m=>String(m.from)===String(me));
+    }catch(e){}
+  }
+  if(inboxEl) inboxEl.innerHTML = mailList(inbox, 'in', me);
+  if(outboxEl) outboxEl.innerHTML = mailList(outbox, 'out', me);
+}
+function mailList(list, box, me){
+  if(!list || !list.length) return '<div class="muted">暂无邮件</div>';
+  return list.slice().reverse().map(m=>{
+    const other = box==='in' ? m.from : m.to;
+    const unread = box==='in' && !m.read ? '<span class="tag hot" style="margin-left:6px">未读</span>' : '';
+    return `<div class="card">
+      <div class="pmeta">${box==='in'?'← 来自':'→ 发送给'} ${h(other)} · ${h(m.date)}${unread}</div>
+      <div class="ptitle">${h(m.subject)}</div>
+      <div class="ptext">${h(m.body)}</div>
+      <div style="margin-top:6px"><a href="#" style="color:#d63a3a;font-size:12px" onclick="deleteMail(${m.id},'${box}');return false;">删除</a></div>
+    </div>`;
+  }).join("");
+}
+async function sendMail(){
   const to=$("mail-to").value, sub=$("mail-sub").value.trim(), b=$("mail-body").value.trim();
   if(!to) return alert("请选择收件人");
   if(!sub||!b) return alert("主题和内容必填");
+  const me = CUR ? CUR.username : '';
+  if(window.Supabase && window.Supabase.getToken()){
+    try{
+      await Store.cloudSendMail(me, to, sub, b);
+      alert("已发送 ✔"); loadMailbox(); return;
+    }catch(e){ return alert("发送失败：" + e.message); }
+  }
+  // 降级：本地公共池
   const db=Store.getDB(); if(!db.mail) db.mail=[];
-  db.mail.push({from:CUR.username,to,subject:sub,body:b,date:todayStr()});
+  db.mail.push({id:Date.now(),from:me,to,subject:sub,body:b,date:todayStr(),read:false});
   Store.saveDB(db);
-  // 存储到接收者自己的邮箱记录也可通过 DB 公共 mail —— 本地演示用公共池
-  alert("已发送 ✔"); renderMail();
+  alert("已发送 ✔"); loadMailbox();
+}
+async function deleteMail(id, box){
+  if(!confirm("确定删除这封邮件？")) return;
+  if(window.Supabase && window.Supabase.getToken()){
+    await Store.cloudDeleteMail(id, box==='in'?'to':'from');
+  } else {
+    const db=Store.getDB(); const me = CUR ? CUR.username : '';
+    db.mail = (db.mail||[]).filter(m=>!((m.id===id) && (box==='in'? String(m.to)===String(me) : String(m.from)===String(me))));
+    Store.saveDB(db);
+  }
+  loadMailbox();
 }
 
 /* ================= 个人主页 ================= */

@@ -91,6 +91,21 @@ create table if not exists public.notices (
   date date default current_date
 );
 
+-- 8) 站内信（洛谷式）── 2026-08-04 新增
+-- 收件箱 = to=我 且 del_by_to=false；发件箱 = from=我 且 del_by_from=false
+-- 删除只影响看的那一方（收件人删 del_by_to=true，发件人删 del_by_from=true），不真正删行
+create table if not exists public.mails (
+  id bigint generated always as identity primary key,
+  "from" text not null,
+  "to" text not null,
+  subject text not null default '',
+  body text not null default '',
+  date date default current_date,
+  read boolean default false,
+  del_by_from boolean default false,
+  del_by_to boolean default false
+);
+
 -- ============================================================
 -- 行级安全（RLS）：论坛业务数据允许所有登录用户读写。
 -- 生产环境应根据 admin 角色收紧写权限，这里先放开便于开发。
@@ -102,6 +117,7 @@ alter table public.articles enable row level security;
 alter table public.problems enable row level security;
 alter table public.bounties enable row level security;
 alter table public.notices enable row level security;
+alter table public.mails enable row level security;
 
 -- 允许登录用户读写 forum 业务表
 create policy "all users read/write profiles" on public.profiles for all using (true) with check (true);
@@ -111,6 +127,7 @@ create policy "all users read/write articles" on public.articles for all using (
 create policy "all users read/write problems" on public.problems for all using (true) with check (true);
 create policy "all users read/write bounties" on public.bounties for all using (true) with check (true);
 create policy "all users read/write notices" on public.notices for all using (true) with check (true);
+create policy "all users read/write mails" on public.mails for all using (true) with check (true);
 
 -- 触发器：注册时自动创建 profile
 create or replace function public.handle_new_user()
