@@ -118,9 +118,10 @@
       return r;
     },
     async insert(table, rows){
-      const r = await req('/rest/v1/' + table, {
+      // 请求返回插入后的行（含自增 id），供 store 写回本地 cloudId，避免重推
+      const r = await req('/rest/v1/' + table + '?select=*', {
         method:'POST',
-        headers: authHeaders(getToken()),
+        headers: Object.assign({}, authHeaders(getToken()), { 'Prefer': 'return=representation' }),
         body: JSON.stringify(Array.isArray(rows)?rows:[rows])
       });
       return r;
