@@ -14,3 +14,6 @@ desktop.ini
 node_modules/
 __pycache__/
 *.pyc
+
+# 本地运维脚本与备份（含云端数据/匿名key样本，勿上传公开仓库）
+_tools/

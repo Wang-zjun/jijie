@@ -83,6 +83,28 @@
       return r;
     },
 
+    // 用 refresh_token 换取新的 access_token（解决重进后 token 过期/串账号）
+    async restoreSession(){
+      try{
+        const raw = localStorage.getItem(TOKEN_KEY);
+        if(!raw) return null;
+        let j; try{ j=JSON.parse(raw); }catch(e){ return null; }
+        if(!j || !j.access_token) return null;
+        // 未过期直接用
+        if(j.expires_at && (Date.now()/1000) < (Number(j.expires_at)-30)) return j;
+        // 有 refresh_token → 刷新
+        if(j.refresh_token){
+          const r = await req('/auth/v1/token?grant_type=refresh_token', {
+            method:'POST',
+            headers: authHeaders(null),
+            body: JSON.stringify({ refresh_token: j.refresh_token })
+          });
+          if(r && r.access_token){ setToken(r); return r; }
+        }
+        return null;
+      }catch(e){ return null; }
+    },
+
     // ===== 通用表操作 =====
     async select(table, select='*', filter={}){
       let url = '/rest/v1/' + table + '?select=' + encodeURIComponent(select);

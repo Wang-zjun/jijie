@@ -24,6 +24,18 @@
     setTrust(){ localStorage.setItem(KEY_TRUST, "1"); },
     isCloud(){ return cloudReady; },
 
+    // 重进站点时恢复登录会话：刷新 token → 拉取本人 profile → 修正本地账号指向
+    async restoreSession(){
+      if(!window.Supabase) return;
+      try{
+        const s = await window.Supabase.restoreSession();
+        if(!s) return;
+        cloudReady = true;
+        await this.cloudPullUser();
+        return true;
+      }catch(e){ return false; }
+    },
+
     // ================= 用户 =================
     getUsers(){
       let arr = null;
@@ -165,21 +177,49 @@
         await this.cloudPushUser();
       }catch(e){}
     },
+    // 云端删除一行（本地删除了就把云端对应 cloudId 的记录也删掉）
+    async cloudDeleteRow(table, cloudId){
+      if(cloudId===undefined||cloudId===null) return;
+      try{
+        const tok=window.Supabase.getToken(); if(!tok) return;
+        await window.Supabase.remove(table, { id: cloudId });
+        // 同时从已推送标记里摘掉，避免将来误判
+        try{
+          const PUSH_KEY='jijie_pushed';
+          let pushed={}; try{ pushed=JSON.parse(localStorage.getItem(PUSH_KEY)||'{}'); }catch(e){ pushed={}; }
+          const k=table;
+          if(pushed[k]){ const i=pushed[k].indexOf(String(cloudId)); if(i>=0){ pushed[k].splice(i,1); localStorage.setItem(PUSH_KEY, JSON.stringify(pushed)); } }
+        }catch(e){}
+      }catch(e){}
+    },
     async cloudPushDB(){
-      // 推送到云端，用本地「已推送标记」去重（jijie_pushed），避免重复堆积
+      // 推送新增到云端；以 cloudId 为唯一去重键，杜绝重推堆积。
+      // 关键修复：本地 record 一旦推成功，就把云端返回的 id 写回本地(cloudId)，
+      // 下次就不会再把同一条当新纪录重复 insert。
       try{
         const db=this.getDB();
         if(!db) return;
         const PUSH_KEY='jijie_pushed';
         let pushed={}; try{ pushed=JSON.parse(localStorage.getItem(PUSH_KEY)||'{}'); }catch(e){ pushed={}; }
-        let changed=false;
+        let changed=false; let dbChanged=false;
         const ins=async(table, rows, map, key)=>{
           if(!rows||!rows.length) return;
           const done=pushed[key]||[];
-          const todo=rows.filter(r=>!done.includes(String(r.id)));
+          // 只推「还没有 cloudId、且不在已推送标记里」的新纪录
+          const todo=rows.filter(r=>!r.cloudId && !done.includes(String(r.id)));
           if(!todo.length) return;
-          try{ await window.Supabase.insert(table, todo.map(map)); }catch(e){ return; }
-          // 记录已推送 id
+          let inserted;
+          try{ inserted=await window.Supabase.insert(table, todo.map(map)); }catch(e){ return; }
+          // 把云端返回的 id 写回本地（marked 用本地 id 记录，cloudId 用于将来删除/去重）
+          if(inserted && Array.isArray(inserted)){
+            const byIdx={};
+            todo.forEach((r,i)=>{ byIdx[i]=r; });
+            inserted.forEach((cloudRow,ci)=>{
+              const localRow=byIdx[ci];
+              if(localRow && cloudRow && cloudRow.id!==undefined){ localRow.cloudId=cloudRow.id; }
+            });
+            dbChanged=true;
+          }
           const merged=(pushed[key]||[]).concat(todo.map(r=>String(r.id)));
           pushed[key]=merged.slice(-500);
           changed=true;
@@ -190,24 +230,48 @@
         await ins('problems', db.problems||[], r=>({ title:r.title, tag:r.tag||'综合', diff:r.diff||3, body:r.body, solution:r.solution||'', status:r.status||'pending', author:r.author, solves:r.solves||0, solvers:r.solvers||{}, solutions:r.solutions||[] }), 'problems');
         await ins('bounties', db.bounties||[], r=>({ title:r.title, body:r.body, reward_pts:r.rewardPts||0, author:r.author, date:(r.date||todayStr()), solved:!!r.solved, solver:r.solver||'', solution:r.solution||'' }), 'bounties');
         await ins('notices', db.notices||[], r=>({ title:r.title, body:r.body, tag:r.tag||'公告', date:(r.date||todayStr()) }), 'notices');
+        if(dbChanged) localStorage.setItem(KEY_DB, JSON.stringify(db));
         if(changed) localStorage.setItem(PUSH_KEY, JSON.stringify(pushed));
       }catch(e){}
     },
     // 从云端全量拉取到本地（登录后/启动时调用）
+    // 修复：按 cloudId 合并而不是粗暴整体覆盖 —— 云端有的、本地没有的才追加；
+    // 本地已存在(同 cloudId)的以云端内容更新字段；本地新增但还没推云的保留。
     async cloudPullAll(){
       try{
         const tok=window.Supabase.getToken(); if(!tok) return;
         const db=this.getDB();
-        const G=async(tDef,localKey,map)=>{ try{ const rows=await window.Supabase.selectOrder(tDef,'*','id'); if(rows&&Array.isArray(rows)&&rows.length){ db[localKey]=map?rows.map(map):rows; } }catch(e){} };
-        await G('posts','posts', r=>({ id:r.id, title:r.title, body:r.body, author:r.author, date:r.date||todayStr(), pin:!!r.pinned, comments:r.comments||[], cloudId:r.id }));
-        await G('resources','resources', r=>({ id:r.id, name:r.name, type:r.type, link:r.link, sub:r.sub||'', author:r.author, date:r.date||todayStr() }));
-        await G('articles','articles', r=>({ id:r.id, title:r.title, body:r.body, tags:r.tags||'', author:r.author, date:r.date||todayStr() }));
-        await G('problems','problems', r=>({ id:r.id, title:r.title, tag:r.tag||'综合', diff:r.diff||3, body:r.body, solution:r.solution||'', status:r.status||'approved', author:r.author, solves:r.solves||0, solvers:r.solvers||{}, solutions:r.solutions||[] }));
-        await G('bounties','bounties', r=>({ id:r.id, title:r.title, body:r.body, rewardPts:r.reward_pts||0, author:r.author, date:r.date||todayStr(), solved:!!r.solved, solver:r.solver||'', solution:r.solution||'' }));
-        await G('notices','notices', r=>({ id:r.id, title:r.title, body:r.body, tag:r.tag||'公告', date:r.date||todayStr() }));
+        let changed=false;
+        const merge=async(tDef,localKey,map)=>{
+          try{
+            const rows=await window.Supabase.selectOrder(tDef,'*','id');
+            if(!rows||!Array.isArray(rows)||!rows.length) return;
+            const local=db[localKey]=db[localKey]||[];
+            const cloudMapped=rows.map(map);
+            // 本地已有 cloudId → 云端更新字段；否则追加（带 cloudId，防止重推）
+            const localById={};
+            local.forEach(r=>{ if(r.cloudId!==undefined) localById[String(r.cloudId)]=r; });
+            const merged=[];
+            const seen=new Set();
+            cloudMapped.forEach(c=>{
+              const existing=localById[String(c.cloudId)];
+              if(existing){ Object.assign(existing, c); if(!c.cloudId) existing.cloudId=c.id; merged.push(existing); seen.add(String(c.cloudId)); }
+              else { merged.push(c); seen.add(String(c.cloudId)); changed=true; }
+            });
+            // 保留本地新增、尚未有 cloudId 的纪录（不丢数据）
+            local.forEach(r=>{ if(r.cloudId===undefined && !seen.has(''+r.id)) merged.push(r); });
+            db[localKey]=merged;
+          }catch(e){}
+        };
+        await merge('posts','posts', r=>({ cloudId:r.id, id:(r.id), title:r.title, body:r.body, author:r.author, date:r.date||todayStr(), pin:!!r.pinned, comments:r.comments||[] }));
+        await merge('resources','resources', r=>({ cloudId:r.id, id:r.id, name:r.name, type:r.type, link:r.link, sub:r.sub||'', author:r.author, date:r.date||todayStr() }));
+        await merge('articles','articles', r=>({ cloudId:r.id, id:r.id, title:r.title, body:r.body, tags:r.tags||'', author:r.author, date:r.date||todayStr() }));
+        await merge('problems','problems', r=>({ cloudId:r.id, id:r.id, title:r.title, tag:r.tag||'综合', diff:r.diff||3, body:r.body, solution:r.solution||'', status:r.status||'approved', author:r.author, solves:r.solves||0, solvers:r.solvers||{}, solutions:r.solutions||[] }));
+        await merge('bounties','bounties', r=>({ cloudId:r.id, id:r.id, title:r.title, body:r.body, rewardPts:r.reward_pts||0, author:r.author, date:r.date||todayStr(), solved:!!r.solved, solver:r.solver||'', solution:r.solution||'' }));
+        await merge('notices','notices', r=>({ cloudId:r.id, id:r.id, title:r.title, body:r.body, tag:r.tag||'公告', date:r.date||todayStr() }));
         // 若管理员刚清空过通知（或普通用户无云端通知），不覆盖本地已清空的 notices
         try{ const cleared=localStorage.getItem('jijie_cleared_notices'); if(cleared && (Date.now()-Number(cleared))<86400000){ db.notices=[]; } }catch(e){}
-        localStorage.setItem(KEY_DB, JSON.stringify(db));
+        if(changed) localStorage.setItem(KEY_DB, JSON.stringify(db));
       }catch(e){}
     }
   };

@@ -40,8 +40,8 @@ function boot(){
   // 若 Supabase 有 token（已云端登录过）→ 恢复云会话并拉取数据
   const cloudTok = window.Supabase ? window.Supabase.getToken() : null;
   if(cloudTok){
-    // 无论引导与否，只要有云端会话就进主界面
-    Store.cloudPullUser().then(()=>{
+    // 先刷新/恢复会话（修过期 token 导致串账号），再拉本人数据
+    Store.restoreSession().then(()=>{
       CUR = Store.currentUser();
       if(CUR){ enterApp(); return; }
       afterBoot();
@@ -62,8 +62,10 @@ function afterBoot(){
   enterApp();
 }
 function enterApp(){
-  // 后台拉云端帖子等（不阻塞）
-  if(window.Supabase && Store.getTrust()){ Store.cloudPullAll().then(()=>{ try{route(currentPage);}catch(e){} }); }
+  // 重进时先恢复云端会话（刷新 token / 拉回本人账号），修复"重进吞账号"
+  if(window.Supabase && Store.getTrust()){
+    Store.restoreSession().finally(()=>{ Store.cloudPullAll().then(()=>{ try{route(currentPage);}catch(e){} }); });
+  }
   if(CUR.admin){ $("nav-admin").style.display = "flex"; }
   // 非管理员进入：清掉任何残留的管理员切换标记（普通用户绝不该看到该按钮）
   if(!CUR.admin){ try{ localStorage.removeItem('jijie_admin_session'); }catch(e){} }
@@ -323,7 +325,10 @@ function delPost(id){
   if(!CUR.admin){ return; }
   if(!confirm("确定删除该帖？")) return;
   recordLog(CUR.username, 'delete_post', '删除帖子 #'+id);
-  const db=Store.getDB(); db.posts=db.posts.filter(p=>p.id!==id); Store.saveDB(db); rerender();
+  const db=Store.getDB(); const _p=db.posts.find(p=>p.id===id);
+  db.posts=db.posts.filter(p=>p.id!==id); Store.saveDB(db);
+  if(_p && _p.cloudId!==undefined) Store.cloudDeleteRow('posts', _p.cloudId);
+  rerender();
 }
 function togglePin(id){
   const db=Store.getDB(); const p=db.posts.find(x=>x.id===id); p.pin=!p.pin; Store.saveDB(db); rerender();
@@ -397,7 +402,7 @@ function newArticle(){
   db.articles.push({id:Date.now(),title:t,body:b,tags:tag,author:CUR.nick||CUR.username,date:todayStr()});
   Store.saveDB(db); renderArticles();
 }
-function delArticle(id){ if(!confirm("删除该文章？"))return; const db=Store.getDB(); db.articles=db.articles.filter(a=>a.id!==id); Store.saveDB(db); rerender(); }
+function delArticle(id){ if(!confirm("删除该文章？"))return; const db=Store.getDB(); const _a=db.articles.find(a=>a.id===id); db.articles=db.articles.filter(a=>a.id!==id); Store.saveDB(db); if(_a && _a.cloudId!==undefined) Store.cloudDeleteRow('articles', _a.cloudId); rerender(); }
 
 /* ================= 题库 ================= */
 function renderProblems(){
@@ -1041,14 +1046,14 @@ function adminTrash(db){
 }
 function emptyTrashItem(id){
   if(!confirm("彻底删除该帖（不可恢复）？")) return;
-  const db=Store.getDB(); db.posts=db.posts.filter(p=>p.id!==id); Store.saveDB(db); renderAdmin();
+  const db=Store.getDB(); const _ed=db.posts.find(p=>p.id===id); db.posts=db.posts.filter(p=>p.id!==id); Store.saveDB(db); if(_ed && _ed.cloudId!==undefined) Store.cloudDeleteRow('posts', _ed.cloudId); renderAdmin();
 }
 function publishNotice(){
   const t=$("nt-title").value.trim(), b=$("nt-body").value.trim(); if(!t) return alert("标题必填");
   const db=Store.getDB(); if(!db.notices) db.notices=[];
   db.notices.push({id:Date.now(),title:t,body:b,tag:"公告",date:todayStr()}); Store.saveDB(db); renderAdmin();
 }
-function delNotice(id){ if(!confirm("删除该通知？"))return; const db=Store.getDB(); db.notices=db.notices.filter(n=>String(n.id)!==String(id)); Store.saveDB(db); renderAdmin(); }
+function delNotice(id){ if(!confirm("删除该通知？"))return; const db=Store.getDB(); const _n=db.notices.find(n=>String(n.id)===String(id)); db.notices=db.notices.filter(n=>String(n.id)!==String(id)); Store.saveDB(db); if(_n && _n.cloudId!==undefined) Store.cloudDeleteRow('notices', _n.cloudId); renderAdmin(); }
 function clearAllNotices(){
   if(!CUR.admin) return;
   const n=(Store.getDB().notices||[]).length;
@@ -1096,9 +1101,9 @@ function editProblem(id){
   p.title=title; p.tag=tag||"综合"; p.diff=Math.max(1,Math.min(5,diff)); p.body=body; p.solution=sol;
   Store.saveDB(db); renderAdmin(); alert("已保存 ✔");
 }
-function delProblem(id){ if(!confirm("删除该题目？"))return; const db=Store.getDB(); db.problems=db.problems.filter(p=>p.id!==id); Store.saveDB(db); renderAdmin(); }
-function delBounty(id){ if(!confirm("删除该悬赏？"))return; const db=Store.getDB(); db.bounties=db.bounties.filter(b=>b.id!==id); Store.saveDB(db); renderAdmin(); }
-function delResource(id){ if(!confirm("删除该资源？"))return; const db=Store.getDB(); db.resources=db.resources.filter(r=>r.id!==id); Store.saveDB(db); renderAdmin(); }
+function delProblem(id){ if(!confirm("删除该题目？"))return; const db=Store.getDB(); const _x=db.problems.find(p=>p.id===id); db.problems=db.problems.filter(p=>p.id!==id); Store.saveDB(db); if(_x && _x.cloudId!==undefined) Store.cloudDeleteRow('problems', _x.cloudId); renderAdmin(); }
+function delBounty(id){ if(!confirm("删除该悬赏？"))return; const db=Store.getDB(); const _x=db.bounties.find(b=>b.id===id); db.bounties=db.bounties.filter(b=>b.id!==id); Store.saveDB(db); if(_x && _x.cloudId!==undefined) Store.cloudDeleteRow('bounties', _x.cloudId); renderAdmin(); }
+function delResource(id){ if(!confirm("删除该资源？"))return; const db=Store.getDB(); const _x=db.resources.find(r=>r.id===id); db.resources=db.resources.filter(r=>r.id!==id); Store.saveDB(db); if(_x && _x.cloudId!==undefined) Store.cloudDeleteRow('resources', _x.cloudId); renderAdmin(); }
 function adminAddPoints(username){
   if(!CUR.admin) return;
   const val = prompt("给 "+username+" 增加积分（输入正数加，负数扣）：");
